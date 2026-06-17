@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, MapPin, Calendar, Trophy } from "lucide-react"
 
-const DEFAULT_RATING = 5 // mid 0-15 scale, used for unrated players
+const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
 
 export default function Page() {
@@ -19,6 +19,7 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null)
   const [data, setData] = useState<TournamentResponse | null>(null)
   const [startRatings, setStartRatings] = useState<Record<string, number>>({})
+  const [factor, setFactor] = useState(1)
 
   async function handleCalculate(e?: React.FormEvent) {
     e?.preventDefault()
@@ -53,6 +54,7 @@ export default function Page() {
       id: p.id,
       name: p.name,
       rating: startRatings[p.id] ?? DEFAULT_RATING,
+      weight: p.weight,
       provisional: p.provisional,
     }))
     const matches: Match[] = data.matches.map((m) => ({
@@ -62,8 +64,8 @@ export default function Page() {
       loserId: m.loserId,
       score: m.score,
     }))
-    return calculateRatings(players, matches)
-  }, [data, startRatings])
+    return calculateRatings(players, matches, factor)
+  }, [data, startRatings, factor])
 
   function setRating(id: string, value: number) {
     setStartRatings((prev) => ({ ...prev, [id]: value }))
@@ -81,9 +83,10 @@ export default function Page() {
         </h1>
         <p className="mt-2 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
           Paste a ligas.io tournament URL to instantly calculate each
-          player&apos;s rating change &mdash; no waiting for ligas to process
-          the event. Starting ratings are pulled live from each player&apos;s
-          profile and remain fully editable.
+          player&apos;s rating change using the official FNTU formula &mdash; no
+          waiting for ligas to process the event. Starting ratings and weights
+          are pulled live from each player&apos;s profile and remain fully
+          editable.
         </p>
       </header>
 
@@ -135,7 +138,14 @@ export default function Page() {
               </div>
               <div>
                 <h2 className="text-lg font-semibold leading-tight">
-                  {data.tournament.name}
+                  <a
+                    href={data.tournament.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline-offset-4 hover:text-primary hover:underline"
+                  >
+                    {data.tournament.name}
+                  </a>
                 </h2>
                 <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
                   {data.tournament.orgName && <span>{data.tournament.orgName}</span>}
@@ -154,6 +164,11 @@ export default function Page() {
                   <span>{data.players.length} players</span>
                   <span>{data.matches.length} matches</span>
                 </div>
+                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                  {data.tournament.processed
+                    ? "Already processed by ligas — starting ratings are each player's pre-tournament values, so “After” should match ligas' official result."
+                    : "Not yet processed by ligas — starting ratings are each player's current rating, i.e. a live prediction of the outcome."}
+                </p>
               </div>
             </div>
           </div>
@@ -166,20 +181,39 @@ export default function Page() {
               </TabsTrigger>
             </TabsList>
             <TabsContent value="players" className="mt-4">
-              <p className="mb-3 text-sm text-muted-foreground">
-                Edit any starting rating to recalculate instantly. Ratings use
-                ligas&apos; 0&ndash;15 scale.
-              </p>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  Edit any starting rating to recalculate instantly. Provisional
+                  players start unrated (0) and are anchored to a base rating
+                  from their results.
+                </p>
+                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                  Tournament factor
+                  <Input
+                    type="number"
+                    step="0.1"
+                    min="0"
+                    value={factor}
+                    onChange={(e) => setFactor(Number(e.target.value))}
+                    className="h-8 w-20 text-right font-mono"
+                    aria-label="Tournament factor (coefficient)"
+                  />
+                </label>
+              </div>
               <ResultsTable
                 results={result.players}
                 startRatings={startRatings}
                 onRatingChange={setRating}
+                profileUrls={Object.fromEntries(
+                  data.players.map((p) => [p.id, p.profileUrl]),
+                )}
               />
             </TabsContent>
             <TabsContent value="matches" className="mt-4">
               <p className="mb-3 text-sm text-muted-foreground">
-                Each match shows the points the winner gained and the loser
-                lost, based on ratings at the moment the match was played.
+                Each match shows the integer points both players earned, based
+                on their pre-tournament ratings. Points are summed per player,
+                then scaled by weight and the tournament factor.
               </p>
               <MatchesTable matches={result.matches} />
             </TabsContent>
