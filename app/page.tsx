@@ -5,7 +5,6 @@ import type { TournamentResponse } from "@/lib/types"
 import { calculateRatings, type Match, type PlayerInput } from "@/lib/rating"
 import { ResultsTable } from "@/components/results-table"
 import { MatchesTable } from "@/components/matches-table"
-import { VisitorsPanel } from "@/components/visitors-panel"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -221,8 +220,6 @@ export default function Page() {
           </Tabs>
         </section>
       )}
-
-      <VisitorsPanel />
     </main>
   )
 }

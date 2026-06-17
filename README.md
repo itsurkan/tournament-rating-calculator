@@ -24,26 +24,6 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
-## Visitors counter
-
-The footer shows total page-load counts for the current day, week, month, and
-year. Counts are stored in serverless Redis (Upstash / Vercel KV) so they
-persist across deploys and cold starts.
-
-Until credentials are configured the panel degrades gracefully and shows `—`
-for every period — no errors. To enable real counts:
-
-1. Add the **Upstash** (or **Vercel KV**) integration to your Vercel project.
-2. Pull the env vars locally: `vercel env pull .env.local`. The code reads
-   `KV_REST_API_URL` / `KV_REST_API_TOKEN`, falling back to
-   `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`.
-3. Restart the dev server (or redeploy). The panel will start counting.
-
-Implementation: counting logic in `lib/visits.ts`, endpoint in
-`app/api/visits/route.ts`, UI in `components/visitors-panel.tsx`. Time buckets
-use UTC and calendar periods (this week / month / year), so each is a single
-O(1) counter.
-
 ## Learn More
 
 To learn more, take a look at the following resources:
