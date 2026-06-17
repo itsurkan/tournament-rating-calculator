@@ -174,7 +174,13 @@ export async function POST(req: NextRequest) {
             getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`).catch(() => null),
             readSnapshot(orgAlias, rankings, pid, id),
           ])
-          const rating = snap?.rating ?? readRanking(profile)
+          // If this tournament was already processed, use its pre-tournament
+          // `initial`. Otherwise the profile ranking is the authoritative current
+          // rating — prefer it over the latest history entry's `final`, which can
+          // lag behind the profile (the snapshot's rating is only a fallback).
+          const rating = snap?.processed
+            ? snap.rating
+            : readRanking(profile) ?? snap?.rating ?? null
           return {
             id: pid,
             ranking: rating != null && rating > 0 ? rating : null,
