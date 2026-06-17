@@ -42,6 +42,84 @@ function readRanking(profile: any): number | null {
   return Number.isFinite(value) && value > 0 ? value : null
 }
 
+function num(v: unknown): number | null {
+  const n = typeof v === "number" ? v : Number(v)
+  return Number.isFinite(n) ? n : null
+}
+
+type Ranking = { shortId: string; alias: string | null }
+
+type Snapshot = {
+  /** Rating to feed the calculator (null = unrated/provisional). */
+  rating: number | null
+  /** Weight to feed the calculator. */
+  weight: number
+  /** True if this exact tournament was already processed for the player. */
+  processed: boolean
+  /** Alias of the ranking the player belongs to (e.g. "men"), for profile links. */
+  rankingAlias: string | null
+}
+
+// The rating/weight to use as this player's starting point for the tournament.
+//
+// A player's ranking history holds one entry per rated tournament, keyed by the
+// tournament's short id, with both the pre-tournament (`initial`/`initialWeight`)
+// and post-tournament (`final`/`finalWeight`) values.
+//
+//   - If THIS tournament is already in the player's history, ligas has already
+//     processed it — so we must use the PRE-tournament values, otherwise we'd
+//     double-count the very event we're calculating.
+//   - Otherwise the tournament is unprocessed and the player's current rating
+//     (their latest entry's `final`) is the correct starting point.
+async function readSnapshot(
+  alias: string,
+  rankings: Ranking[],
+  pid: string,
+  tournamentId: string,
+): Promise<Snapshot | null> {
+  // Keep each entry tagged with the ranking it came from (men / women / ...).
+  const entries: Array<any & { _rankingAlias: string | null }> = []
+  await Promise.all(
+    rankings.map(async (r) => {
+      try {
+        const hist = asArray(
+          await getJson(`${LIGAS}/organizations/${alias}/rankings/${r.shortId}/participants/${pid}`),
+        )
+        for (const e of hist) entries.push({ ...e, _rankingAlias: r.alias })
+      } catch {
+        // player not in this ranking — ignore
+      }
+    }),
+  )
+  if (entries.length === 0) return null
+
+  const own = entries.find((e) => e?.id === tournamentId)
+  if (own) {
+    return {
+      rating: num(own.initial),
+      weight: num(own.initialWeight) ?? 0,
+      processed: true,
+      rankingAlias: own._rankingAlias,
+    }
+  }
+
+  let latest: any = null
+  let latestT = -Infinity
+  for (const e of entries) {
+    const t = Date.parse(e?.actualDate ?? e?.date ?? "") || 0
+    if (t >= latestT) {
+      latestT = t
+      latest = e
+    }
+  }
+  return {
+    rating: num(latest?.final),
+    weight: num(latest?.finalWeight) ?? 0,
+    processed: false,
+    rankingAlias: latest?._rankingAlias ?? null,
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}))
@@ -78,25 +156,58 @@ export async function POST(req: NextRequest) {
 
     const playerIds = Array.from(rosterMap.keys())
 
-    // Fetch each player's real 0-15 ranking from the org user profile.
+    // Rankings for this org (e.g. men / women) — used to look up each player's
+    // pre-tournament rating/weight and to build their profile link.
+    const rankings: Ranking[] = asArray(
+      await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`).catch(() => []),
+    )
+      .map((r: any) => ({ shortId: r?.shortId, alias: r?.alias ?? null }))
+      .filter((r): r is Ranking => typeof r.shortId === "string")
+
+    // For each player, resolve the rating + weight they had going INTO this
+    // tournament (pre-tournament if ligas already processed it, current
+    // otherwise), falling back to their profile ranking when there's no history.
     const ratings = await Promise.all(
       playerIds.map(async (pid) => {
         try {
-          const profile = await getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`)
-          return { id: pid, ranking: readRanking(profile) }
+          const [profile, snap] = await Promise.all([
+            getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`).catch(() => null),
+            readSnapshot(orgAlias, rankings, pid, id),
+          ])
+          const rating = snap?.rating ?? readRanking(profile)
+          return {
+            id: pid,
+            ranking: rating != null && rating > 0 ? rating : null,
+            weight: snap?.weight ?? 0,
+            processed: snap?.processed ?? false,
+            rankingAlias: snap?.rankingAlias ?? null,
+          }
         } catch {
-          return { id: pid, ranking: null }
+          return { id: pid, ranking: null, weight: 0, processed: false, rankingAlias: null }
         }
       }),
     )
 
+    // A tournament counts as already-processed if ligas has folded it into any
+    // player's rating history.
+    const processed = ratings.some((r) => r.processed)
+
+    // Fall back to the org's first ranking alias when a player's own ranking is
+    // unknown (e.g. a brand-new player with no history yet).
+    const fallbackAlias = rankings[0]?.alias ?? null
+
     const players = playerIds.map((pid) => {
       const r = ratings.find((x) => x.id === pid)
+      const rankingAlias = r?.rankingAlias ?? fallbackAlias
       return {
         id: pid,
         name: rosterMap.get(pid) ?? pid,
         ranking: r?.ranking ?? null,
+        weight: r?.weight ?? 0,
         provisional: r?.ranking == null,
+        profileUrl: rankingAlias
+          ? `https://ligas.io/${orgAlias}/ranking/${rankingAlias}/participants/${pid}`
+          : null,
       }
     })
 
@@ -135,6 +246,8 @@ export async function POST(req: NextRequest) {
         location: tournament?.location ?? null,
         start: tournament?.start ?? null,
         format: tournament?.format ?? null,
+        processed,
+        url: `https://ligas.io/tournament/${id}/results`,
       },
       players,
       matches,

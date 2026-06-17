@@ -1,26 +1,48 @@
-// TTWRating engine, scaled to the ligas.io 0-15 ranking scale.
+// FNTU / ligas.io ("УТТФ") rating engine.
 //
-// The documented TTWRating formula operates on a ~1000-point scale:
+// This is a faithful port of the official-adjacent calculation used by ligas.io
+// (see https://github.com/sdemchenko/rating). It is NOT an Elo/0-15 system —
+// the "0-15" in a tournament name is only the eligibility category, while real
+// ratings are unbounded (top players reach 80-90+).
 //
-//   Delta = max(0, 100 - (Rwin - Rlose)) / 10 * KT
-//   KT    = max(0.2, round(Ravg / 200) / 10)
+// How it works, per player, over a single tournament:
 //
-// where the winner gains `Delta` and the loser loses `Delta / 2`. If the
-// winner already outranks the loser by 100+ points, Delta is 0 (no points for
-// beating a much weaker opponent).
+//   1. Each match yields an integer "contribution":
+//        - Beat a similar/weaker opponent  -> +2 (gap <= 2), +1 (gap <= 20), else 0
+//        - Beat a stronger opponent        -> round((oppR - myR + 5) / 3)
+//        - Lost to a stronger opponent      -> -2 (gap <= 2), -1 (gap <= 20), else 0
+//        - Lost to a weaker opponent        -> -round((myR - oppR + 5) / 3)
+//        - Beating an unrated (<= 0) player gives 0; an unrated player loses 0.
+//      Contributions always use PRE-tournament ratings (a fixed snapshot).
 //
-// Ligas/UTTF ratings live on a 0-15 scale instead. To apply the same formula
-// faithfully we convert each rating into its 1000-scale equivalent, run the
-// standard formula, then convert the resulting delta back to the 0-15 scale.
+//   2. contestWeight = min(20, sum of |contribution|)          (games played, capped)
+//      closingWeight = initialWeight + contestWeight
+//
+//   3. ratingDelta = factor * sum(contribution) * 10 / min(40, closingWeight)
+//      (0 if the player is brand new and earned no weight)
+//      ratingAfter  = max(0, initialRating + ratingDelta)
+//
+// The min(40, weight) divisor is why established players (high weight) move
+// slowly while newcomers swing hard.
+//
+// Provisional players (no rating yet) start at 0. Their effective starting
+// rating is the "опорний" (base) rating derived from whom they beat/lost to.
+//
+// Verified against ligas tournament 1xquom: reproduces every rated player's
+// post-tournament rating exactly.
 
-export const SCALE_MAX = 15
-const SCALE_FACTOR = 1000 / SCALE_MAX // 0-15 -> 0-1000
+/** ligas rounds ratings to one decimal place. */
+export function roundRating(n: number): number {
+  return Math.round(n * 10) / 10
+}
 
 export type PlayerInput = {
   id: string
   name: string
-  /** Starting rating on the 0-15 scale. */
+  /** Current rating before the tournament. 0 (or null-mapped-to-0) = unrated. */
   rating: number
+  /** Current rating "weight" (experience). 0 for a brand-new player. */
+  weight: number
   /** True when ligas had no rating for this player (provisional / new). */
   provisional: boolean
 }
@@ -34,126 +56,201 @@ export type Match = {
   score: string
 }
 
-export type MatchDelta = {
+export type MatchContribution = {
   gameId: number | string
   stageName: string
   winnerId: string
   loserId: string
-  score: string
   winnerName: string
   loserName: string
+  score: string
   winnerRatingBefore: number
   loserRatingBefore: number
-  /** Points the winner gains (0-15 scale). */
-  delta: number
+  /** Integer points the winner earned from this match (>= 0). */
+  winnerPoints: number
+  /** Integer points the loser earned from this match (<= 0). */
+  loserPoints: number
 }
 
 export type PlayerResult = {
   id: string
   name: string
   provisional: boolean
+  /** Effective starting rating actually used (base rating for provisional players). */
   ratingBefore: number
   ratingAfter: number
   change: number
+  weightBefore: number
+  weightAfter: number
   wins: number
   losses: number
 }
 
 export type CalculationResult = {
   players: PlayerResult[]
-  matches: MatchDelta[]
+  matches: MatchContribution[]
+  factor: number
 }
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100
-}
-
-/**
- * Compute the winner's point gain for a single match on the 0-15 scale.
- * Returns the value already converted back to the 0-15 scale.
- */
-export function matchDelta(
-  winnerRating0to15: number,
-  loserRating0to15: number,
+/** Points a player earns from one match, given pre-tournament ratings. */
+export function contribution(
+  myRating: number,
+  opponentRating: number,
+  iWon: boolean,
 ): number {
-  const rWin = winnerRating0to15 * SCALE_FACTOR
-  const rLose = loserRating0to15 * SCALE_FACTOR
-  const rAvg = (rWin + rLose) / 2
+  if (iWon) {
+    if (opponentRating <= 0) return 0 // beating an unrated player gives nothing
+    if (myRating >= opponentRating) {
+      const gap = myRating - opponentRating
+      if (gap <= 2) return 2
+      if (gap <= 20) return 1
+      return 0 // huge gap, nothing
+    }
+    // beat a stronger player
+    return Math.round((opponentRating - myRating + 5) / 3)
+  }
+  // lost
+  if (myRating <= 0) return 0 // an unrated player loses nothing
+  if (myRating <= opponentRating) {
+    const gap = opponentRating - myRating
+    if (gap <= 2) return -2
+    if (gap <= 20) return -1
+    return 0 // huge gap, lose nothing
+  }
+  // lost to a weaker player
+  return -Math.round((myRating - opponentRating + 5) / 3)
+}
 
-  const kt = Math.max(0.2, Math.round(rAvg / 200) / 10)
-  const base = Math.max(0, 100 - (rWin - rLose)) / 10
-  const delta1000 = base * kt
+type PlayerMatch = { opponentRating: number; iWon: boolean }
 
-  // Convert the 1000-scale delta back to the 0-15 scale.
-  return delta1000 / SCALE_FACTOR
+/**
+ * "Опорний рейтинг" — the base rating a provisional (unrated) player is anchored
+ * to, derived purely from this tournament's results: bounded above by the
+ * strongest player they beat and the weakest player they lost to.
+ */
+function baseRating(matches: PlayerMatch[]): number {
+  let maxWon = 0
+  let minLost = 0
+  let won = false
+  let lost = false
+  for (const m of matches) {
+    if (m.iWon) {
+      maxWon = won ? Math.max(m.opponentRating, maxWon) : m.opponentRating
+      won = true
+    } else {
+      minLost = lost ? Math.min(m.opponentRating, minLost) : m.opponentRating
+      lost = true
+    }
+  }
+  if (!won) return 0
+  return lost ? Math.min(minLost, maxWon) : maxWon
 }
 
 /**
- * Apply all matches sequentially and produce per-player before/after ratings
- * plus a per-match breakdown. Matches are processed in the given order so that
- * rating changes compound the way they would over the course of an event.
+ * Compute every player's post-tournament rating from the full match list at
+ * once (the calculation is a batch over a fixed pre-tournament snapshot, not a
+ * sequential compounding of per-match deltas).
  */
 export function calculateRatings(
   players: PlayerInput[],
   matches: Match[],
+  factor = 1,
 ): CalculationResult {
-  const current = new Map<string, number>()
+  const byId = new Map(players.map((p) => [p.id, p]))
+
+  // Raw pre-tournament rating used when this player is someone else's opponent.
+  const inputRating = new Map<string, number>()
+  for (const p of players) inputRating.set(p.id, p.rating > 0 ? p.rating : 0)
+
+  // Gather each player's matches with the opponent's pre-tournament rating.
+  const perPlayer = new Map<string, PlayerMatch[]>()
   const wins = new Map<string, number>()
   const losses = new Map<string, number>()
-
   for (const p of players) {
-    current.set(p.id, p.rating)
+    perPlayer.set(p.id, [])
     wins.set(p.id, 0)
     losses.set(p.id, 0)
   }
-
-  const matchDeltas: MatchDelta[] = []
-
   for (const m of matches) {
-    const wBefore = current.get(m.winnerId)
-    const lBefore = current.get(m.loserId)
-    if (wBefore === undefined || lBefore === undefined) continue
-
-    const delta = matchDelta(wBefore, lBefore)
-
-    current.set(m.winnerId, wBefore + delta)
-    current.set(m.loserId, Math.max(0, lBefore - delta / 2))
-
+    if (!byId.has(m.winnerId) || !byId.has(m.loserId)) continue
+    perPlayer.get(m.winnerId)!.push({ opponentRating: inputRating.get(m.loserId) ?? 0, iWon: true })
+    perPlayer.get(m.loserId)!.push({ opponentRating: inputRating.get(m.winnerId) ?? 0, iWon: false })
     wins.set(m.winnerId, (wins.get(m.winnerId) ?? 0) + 1)
     losses.set(m.loserId, (losses.get(m.loserId) ?? 0) + 1)
-
-    const winner = players.find((p) => p.id === m.winnerId)
-    const loser = players.find((p) => p.id === m.loserId)
-
-    matchDeltas.push({
-      gameId: m.gameId,
-      stageName: m.stageName,
-      winnerId: m.winnerId,
-      loserId: m.loserId,
-      score: m.score,
-      winnerName: winner?.name ?? m.winnerId,
-      loserName: loser?.name ?? m.loserId,
-      winnerRatingBefore: round2(wBefore),
-      loserRatingBefore: round2(lBefore),
-      delta: round2(delta),
-    })
   }
 
-  const results: PlayerResult[] = players.map((p) => {
-    const after = current.get(p.id) ?? p.rating
+  // Effective starting rating (base rating for unrated players) and weight.
+  const effRating = new Map<string, number>()
+  const effWeight = new Map<string, number>()
+  for (const p of players) {
+    const ms = perPlayer.get(p.id)!
+    if (p.rating <= 0 || p.weight <= 0) {
+      // Unrated / weightless: anchor to the derived base rating, weight 0.
+      effRating.set(p.id, baseRating(ms))
+      effWeight.set(p.id, 0)
+    } else {
+      effRating.set(p.id, p.rating)
+      effWeight.set(p.id, p.weight)
+    }
+  }
+
+  const playerResults: PlayerResult[] = players.map((p) => {
+    const ms = perPlayer.get(p.id)!
+    const initialRating = effRating.get(p.id)!
+    const initialWeight = effWeight.get(p.id)!
+
+    let sumContribution = 0
+    let sumAbs = 0
+    for (const m of ms) {
+      const c = contribution(initialRating, m.opponentRating, m.iWon)
+      sumContribution += c
+      sumAbs += Math.abs(c)
+    }
+    const contestWeight = Math.min(20, sumAbs)
+    const closingWeight = initialWeight + contestWeight
+
+    let delta = 0
+    if (Math.round(closingWeight) !== 0) {
+      delta = (factor * sumContribution * 10) / Math.min(40, closingWeight)
+    }
+    const ratingAfter = Math.max(0, initialRating + delta)
+
     return {
       id: p.id,
       name: p.name,
       provisional: p.provisional,
-      ratingBefore: round2(p.rating),
-      ratingAfter: round2(after),
-      change: round2(after - p.rating),
+      ratingBefore: roundRating(initialRating),
+      ratingAfter: roundRating(ratingAfter),
+      change: roundRating(ratingAfter - initialRating),
+      weightBefore: initialWeight,
+      weightAfter: closingWeight,
       wins: wins.get(p.id) ?? 0,
       losses: losses.get(p.id) ?? 0,
     }
   })
 
-  results.sort((a, b) => b.ratingAfter - a.ratingAfter)
+  // Per-match breakdown: the points each side earned, from their own viewpoint.
+  const matchContributions: MatchContribution[] = matches
+    .filter((m) => byId.has(m.winnerId) && byId.has(m.loserId))
+    .map((m) => {
+      const wRef = effRating.get(m.winnerId)!
+      const lRef = effRating.get(m.loserId)!
+      return {
+        gameId: m.gameId,
+        stageName: m.stageName,
+        winnerId: m.winnerId,
+        loserId: m.loserId,
+        score: m.score,
+        winnerName: byId.get(m.winnerId)!.name,
+        loserName: byId.get(m.loserId)!.name,
+        winnerRatingBefore: roundRating(wRef),
+        loserRatingBefore: roundRating(lRef),
+        winnerPoints: contribution(wRef, inputRating.get(m.loserId) ?? 0, true),
+        loserPoints: contribution(lRef, inputRating.get(m.winnerId) ?? 0, false),
+      }
+    })
 
-  return { players: results, matches: matchDeltas }
+  playerResults.sort((a, b) => b.ratingAfter - a.ratingAfter)
+
+  return { players: playerResults, matches: matchContributions, factor }
 }

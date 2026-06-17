@@ -14,11 +14,11 @@ import {
 import { ArrowDown, ArrowUp, Minus } from "lucide-react"
 
 function ChangeCell({ change }: { change: number }) {
-  if (Math.abs(change) < 0.005) {
+  if (Math.abs(change) < 0.05) {
     return (
       <span className="inline-flex items-center gap-1 font-mono text-muted-foreground">
         <Minus className="size-3.5" />
-        0.00
+        0.0
       </span>
     )
   }
@@ -31,7 +31,7 @@ function ChangeCell({ change }: { change: number }) {
     >
       {up ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />}
       {up ? "+" : ""}
-      {change.toFixed(2)}
+      {change.toFixed(1)}
     </span>
   )
 }
@@ -40,10 +40,12 @@ export function ResultsTable({
   results,
   startRatings,
   onRatingChange,
+  profileUrls = {},
 }: {
   results: PlayerResult[]
   startRatings: Record<string, number>
   onRatingChange: (id: string, value: number) => void
+  profileUrls?: Record<string, string | null>
 }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
@@ -53,6 +55,7 @@ export function ResultsTable({
             <TableHead className="w-12 text-center">#</TableHead>
             <TableHead>Player</TableHead>
             <TableHead className="text-center">W / L</TableHead>
+            <TableHead className="hidden text-center sm:table-cell">Weight</TableHead>
             <TableHead className="w-36 text-right">Start rating</TableHead>
             <TableHead className="text-right">After</TableHead>
             <TableHead className="text-right">Change</TableHead>
@@ -66,7 +69,18 @@ export function ResultsTable({
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-2">
-                  <span className="font-medium">{p.name}</span>
+                  {profileUrls[p.id] ? (
+                    <a
+                      href={profileUrls[p.id] as string}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-medium underline-offset-4 hover:text-primary hover:underline"
+                    >
+                      {p.name}
+                    </a>
+                  ) : (
+                    <span className="font-medium">{p.name}</span>
+                  )}
                   {p.provisional && (
                     <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                       provisional
@@ -79,12 +93,16 @@ export function ResultsTable({
                 <span className="text-muted-foreground"> / </span>
                 <span className="text-muted-foreground">{p.losses}</span>
               </TableCell>
+              <TableCell className="hidden text-center font-mono text-xs text-muted-foreground sm:table-cell">
+                {p.weightBefore}
+                <span className="text-muted-foreground/50"> → </span>
+                {p.weightAfter}
+              </TableCell>
               <TableCell className="text-right">
                 <Input
                   type="number"
                   step="0.1"
                   min="0"
-                  max="15"
                   value={startRatings[p.id] ?? 0}
                   onChange={(e) => onRatingChange(p.id, Number(e.target.value))}
                   className="ml-auto h-8 w-24 text-right font-mono"
@@ -92,7 +110,7 @@ export function ResultsTable({
                 />
               </TableCell>
               <TableCell className="text-right font-mono font-semibold">
-                {p.ratingAfter.toFixed(2)}
+                {p.ratingAfter.toFixed(1)}
               </TableCell>
               <TableCell className="text-right">
                 <ChangeCell change={p.change} />

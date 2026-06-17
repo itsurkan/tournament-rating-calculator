@@ -1,6 +1,6 @@
 "use client"
 
-import type { MatchDelta } from "@/lib/rating"
+import type { MatchContribution } from "@/lib/rating"
 import {
   Table,
   TableBody,
@@ -10,7 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-export function MatchesTable({ matches }: { matches: MatchDelta[] }) {
+export function MatchesTable({ matches }: { matches: MatchContribution[] }) {
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
@@ -24,13 +24,15 @@ export function MatchesTable({ matches }: { matches: MatchDelta[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {matches.map((m) => (
-            <TableRow key={String(m.gameId)}>
+          {matches.map((m, i) => (
+            // ligas numbers games per stage, so gameId repeats across stages —
+            // qualify it with the stage (and index) to keep React keys unique.
+            <TableRow key={`${m.stageName}-${m.gameId}-${i}`}>
               <TableCell>
                 <div className="flex flex-col">
                   <span className="font-medium">{m.winnerName}</span>
                   <span className="font-mono text-xs text-muted-foreground">
-                    {m.winnerRatingBefore.toFixed(2)}
+                    {m.winnerRatingBefore.toFixed(1)}
                   </span>
                 </div>
               </TableCell>
@@ -41,7 +43,7 @@ export function MatchesTable({ matches }: { matches: MatchDelta[] }) {
                 <div className="flex flex-col">
                   <span className="text-muted-foreground">{m.loserName}</span>
                   <span className="font-mono text-xs text-muted-foreground/70">
-                    {m.loserRatingBefore.toFixed(2)}
+                    {m.loserRatingBefore.toFixed(1)}
                   </span>
                 </div>
               </TableCell>
@@ -49,11 +51,12 @@ export function MatchesTable({ matches }: { matches: MatchDelta[] }) {
                 {m.stageName}
               </TableCell>
               <TableCell className="text-right font-mono">
-                <span className="text-primary">+{m.delta.toFixed(2)}</span>
-                <span className="text-muted-foreground"> / </span>
-                <span className="text-destructive">
-                  -{(m.delta / 2).toFixed(2)}
+                <span className="text-primary">
+                  {m.winnerPoints >= 0 ? "+" : ""}
+                  {m.winnerPoints}
                 </span>
+                <span className="text-muted-foreground"> / </span>
+                <span className="text-destructive">{m.loserPoints}</span>
               </TableCell>
             </TableRow>
           ))}
