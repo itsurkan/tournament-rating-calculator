@@ -66,11 +66,11 @@ type Snapshot = {
 // tournament's short id, with both the pre-tournament (`initial`/`initialWeight`)
 // and post-tournament (`final`/`finalWeight`) values.
 //
-//   - If THIS tournament is already in the player's history, ligas has already
-//     processed it — so we must use the PRE-tournament values, otherwise we'd
-//     double-count the very event we're calculating.
-//   - Otherwise the tournament is unprocessed and the player's current rating
-//     (their latest entry's `final`) is the correct starting point.
+//   - If THIS tournament is already in the player's history, ligas has processed
+//     it — use the PRE-tournament values it actually used, so we can reproduce
+//     ligas' official result instead of double-counting the event.
+//   - Otherwise the tournament is unprocessed: use the player's CURRENT rating,
+//     i.e. the `final`/`finalWeight` of their most recent history entry.
 async function readSnapshot(
   alias: string,
   rankings: Ranking[],
@@ -103,14 +103,11 @@ async function readSnapshot(
     }
   }
 
-  let latest: any = null
-  let latestT = -Infinity
+  // Current rating = the most recent history entry's post-tournament value.
+  const entryTime = (e: any) => Date.parse(e?.actualDate ?? e?.date ?? "") || 0
+  let latest: any = entries[0]
   for (const e of entries) {
-    const t = Date.parse(e?.actualDate ?? e?.date ?? "") || 0
-    if (t >= latestT) {
-      latestT = t
-      latest = e
-    }
+    if (entryTime(e) >= entryTime(latest)) latest = e
   }
   return {
     rating: num(latest?.final),
@@ -164,9 +161,9 @@ export async function POST(req: NextRequest) {
       .map((r: any) => ({ shortId: r?.shortId, alias: r?.alias ?? null }))
       .filter((r): r is Ranking => typeof r.shortId === "string")
 
-    // For each player, resolve the rating + weight they had going INTO this
-    // tournament (pre-tournament if ligas already processed it, current
-    // otherwise), falling back to their profile ranking when there's no history.
+    // For each player, resolve the rating + weight they bring into this
+    // tournament: pre-tournament values if ligas already processed it, otherwise
+    // their current rating (latest history entry).
     const ratings = await Promise.all(
       playerIds.map(async (pid) => {
         try {
@@ -174,13 +171,10 @@ export async function POST(req: NextRequest) {
             getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`).catch(() => null),
             readSnapshot(orgAlias, rankings, pid, id),
           ])
-          // If this tournament was already processed, use its pre-tournament
-          // `initial`. Otherwise the profile ranking is the authoritative current
-          // rating — prefer it over the latest history entry's `final`, which can
-          // lag behind the profile (the snapshot's rating is only a fallback).
-          const rating = snap?.processed
-            ? snap.rating
-            : readRanking(profile) ?? snap?.rating ?? null
+          // Use the snapshot (pre-tournament `initial` if processed, else the
+          // latest history `final`). Fall back to the live profile ranking only
+          // when the player has no ranking history at all.
+          const rating = snap ? snap.rating : readRanking(profile)
           return {
             id: pid,
             ranking: rating != null && rating > 0 ? rating : null,
