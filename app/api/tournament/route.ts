@@ -123,7 +123,7 @@ export async function POST(req: NextRequest) {
     const id = parseTournamentId(String(body?.url ?? ""))
     if (!id) {
       return NextResponse.json(
-        { error: "Could not find a tournament id in that URL." },
+        { code: "no_tournament_id" },
         { status: 400 },
       )
     }
@@ -255,7 +255,7 @@ export async function POST(req: NextRequest) {
   } catch (err) {
     console.log("[v0] tournament fetch error:", (err as Error).message)
     return NextResponse.json(
-      { error: "Failed to load this tournament from ligas.io." },
+      { code: "fetch_failed" },
       { status: 502 },
     )
   }
