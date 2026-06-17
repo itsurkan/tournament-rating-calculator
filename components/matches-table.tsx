@@ -1,6 +1,7 @@
 "use client"
 
 import type { MatchContribution } from "@/lib/rating"
+import { useI18n } from "@/lib/i18n"
 import {
   Table,
   TableBody,
@@ -11,16 +12,17 @@ import {
 } from "@/components/ui/table"
 
 export function MatchesTable({ matches }: { matches: MatchContribution[] }) {
+  const { t } = useI18n()
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead>Winner</TableHead>
-            <TableHead className="text-center">Score</TableHead>
-            <TableHead>Loser</TableHead>
-            <TableHead className="hidden md:table-cell">Stage</TableHead>
-            <TableHead className="text-right">Points</TableHead>
+            <TableHead>{t("matches.col.winner")}</TableHead>
+            <TableHead className="text-center">{t("matches.col.score")}</TableHead>
+            <TableHead>{t("matches.col.loser")}</TableHead>
+            <TableHead className="hidden md:table-cell">{t("matches.col.stage")}</TableHead>
+            <TableHead className="text-right">{t("matches.col.points")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

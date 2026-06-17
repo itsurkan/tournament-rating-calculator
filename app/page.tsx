@@ -5,6 +5,8 @@ import type { TournamentResponse } from "@/lib/types"
 import { calculateRatings, type Match, type PlayerInput } from "@/lib/rating"
 import { ResultsTable } from "@/components/results-table"
 import { MatchesTable } from "@/components/matches-table"
+import { LanguageSwitcher } from "@/components/language-switcher"
+import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -13,17 +15,29 @@ import { Loader2, MapPin, Calendar, Trophy } from "lucide-react"
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
 
+// The API reports failures as stable codes; map them to known dictionary keys.
+const ERROR_KEYS = new Set<TKey>([
+  "error.no_tournament_id",
+  "error.fetch_failed",
+  "error.unknown",
+])
+function toErrorKey(code: unknown): TKey {
+  const key = `error.${code}` as TKey
+  return ERROR_KEYS.has(key) ? key : "error.unknown"
+}
+
 export default function Page() {
+  const { t } = useI18n()
   const [url, setUrl] = useState("")
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [errorKey, setErrorKey] = useState<TKey | null>(null)
   const [data, setData] = useState<TournamentResponse | null>(null)
   const [startRatings, setStartRatings] = useState<Record<string, number>>({})
   const [factor, setFactor] = useState(1)
 
   async function handleCalculate(e?: React.FormEvent) {
     e?.preventDefault()
-    setError(null)
+    setErrorKey(null)
     setLoading(true)
     setData(null)
     try {
@@ -33,7 +47,10 @@ export default function Page() {
         body: JSON.stringify({ url }),
       })
       const json = await res.json()
-      if (!res.ok) throw new Error(json?.error ?? "Something went wrong.")
+      if (!res.ok) {
+        setErrorKey(toErrorKey(json?.code))
+        return
+      }
       const payload = json as TournamentResponse
       const ratings: Record<string, number> = {}
       for (const p of payload.players) {
@@ -41,8 +58,8 @@ export default function Page() {
       }
       setStartRatings(ratings)
       setData(payload)
-    } catch (err) {
-      setError((err as Error).message)
+    } catch {
+      setErrorKey("error.unknown")
     } finally {
       setLoading(false)
     }
@@ -74,19 +91,18 @@ export default function Page() {
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 md:py-16">
       <header className="mb-8">
-        <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-          <span className="size-1.5 rounded-full bg-primary" />
-          Table tennis rating calculator
+        <div className="mb-3 flex items-start justify-between gap-4">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-primary" />
+            {t("header.eyebrow")}
+          </div>
+          <LanguageSwitcher />
         </div>
         <h1 className="text-balance text-3xl font-semibold tracking-tight md:text-4xl">
-          Ligas Rating Calculator
+          {t("header.title")}
         </h1>
         <p className="mt-2 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
-          Paste a ligas.io tournament URL to instantly calculate each
-          player&apos;s rating change using the official FNTU formula &mdash; no
-          waiting for ligas to process the event. Starting ratings and weights
-          are pulled live from each player&apos;s profile and remain fully
-          editable.
+          {t("header.intro")}
         </p>
       </header>
 
@@ -98,22 +114,22 @@ export default function Page() {
           value={url}
           onChange={(e) => setUrl(e.target.value)}
           className="h-11 flex-1"
-          aria-label="Ligas tournament URL"
+          aria-label={t("form.urlLabel")}
         />
         <Button type="submit" disabled={loading || !url.trim()} className="h-11 px-6">
           {loading ? (
             <>
               <Loader2 className="size-4 animate-spin" />
-              Calculating
+              {t("form.calculating")}
             </>
           ) : (
-            "Calculate"
+            t("form.calculate")
           )}
         </Button>
       </form>
 
       <div className="mt-2 text-sm text-muted-foreground">
-        Try the example:{" "}
+        {t("form.tryExample")}{" "}
         <button
           type="button"
           onClick={() => setUrl(EXAMPLE)}
@@ -123,9 +139,9 @@ export default function Page() {
         </button>
       </div>
 
-      {error && (
+      {errorKey && (
         <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+          {t(errorKey)}
         </div>
       )}
 
@@ -161,13 +177,13 @@ export default function Page() {
                       {new Date(data.tournament.start).toLocaleDateString()}
                     </span>
                   )}
-                  <span>{data.players.length} players</span>
-                  <span>{data.matches.length} matches</span>
+                  <span>{t("tournament.players", { n: data.players.length })}</span>
+                  <span>{t("tournament.matches", { n: data.matches.length })}</span>
                 </div>
                 <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
                   {data.tournament.processed
-                    ? "Already processed by ligas — starting ratings are each player's pre-tournament values, so “After” should match ligas' official result."
-                    : "Not yet processed by ligas — starting ratings are each player's current rating, i.e. a live prediction of the outcome."}
+                    ? t("tournament.processed")
+                    : t("tournament.unprocessed")}
                 </p>
               </div>
             </div>
@@ -175,20 +191,18 @@ export default function Page() {
 
           <Tabs defaultValue="players">
             <TabsList>
-              <TabsTrigger value="players">Player ratings</TabsTrigger>
+              <TabsTrigger value="players">{t("tabs.players")}</TabsTrigger>
               <TabsTrigger value="matches">
-                Match breakdown ({result.matches.length})
+                {t("tabs.matches", { n: result.matches.length })}
               </TabsTrigger>
             </TabsList>
             <TabsContent value="players" className="mt-4">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-sm text-muted-foreground">
-                  Edit any starting rating to recalculate instantly. Provisional
-                  players start unrated (0) and are anchored to a base rating
-                  from their results.
+                  {t("players.help")}
                 </p>
                 <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                  Tournament factor
+                  {t("players.factor")}
                   <Input
                     type="number"
                     step="0.1"
@@ -196,7 +210,7 @@ export default function Page() {
                     value={factor}
                     onChange={(e) => setFactor(Number(e.target.value))}
                     className="h-8 w-20 text-right font-mono"
-                    aria-label="Tournament factor (coefficient)"
+                    aria-label={t("players.factorAria")}
                   />
                 </label>
               </div>
@@ -211,15 +225,25 @@ export default function Page() {
             </TabsContent>
             <TabsContent value="matches" className="mt-4">
               <p className="mb-3 text-sm text-muted-foreground">
-                Each match shows the integer points both players earned, based
-                on their pre-tournament ratings. Points are summed per player,
-                then scaled by weight and the tournament factor.
+                {t("matches.help")}
               </p>
               <MatchesTable matches={result.matches} />
             </TabsContent>
           </Tabs>
         </section>
       )}
+
+      <footer className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground">
+        {t("footer.createdBy")} &middot;{" "}
+        <a
+          href="https://t.me/Itsurkan"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          @Itsurkan
+        </a>
+      </footer>
     </main>
   )
 }

@@ -1,6 +1,7 @@
 "use client"
 
 import type { PlayerResult } from "@/lib/rating"
+import { useI18n } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -47,18 +48,19 @@ export function ResultsTable({
   onRatingChange: (id: string, value: number) => void
   profileUrls?: Record<string, string | null>
 }) {
+  const { t } = useI18n()
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="w-12 text-center">#</TableHead>
-            <TableHead>Player</TableHead>
-            <TableHead className="text-center">W / L</TableHead>
-            <TableHead className="hidden text-center sm:table-cell">Weight</TableHead>
-            <TableHead className="w-36 text-right">Start rating</TableHead>
-            <TableHead className="text-right">After</TableHead>
-            <TableHead className="text-right">Change</TableHead>
+            <TableHead>{t("results.col.player")}</TableHead>
+            <TableHead className="text-center">{t("results.col.wl")}</TableHead>
+            <TableHead className="hidden text-center sm:table-cell">{t("results.col.weight")}</TableHead>
+            <TableHead className="w-36 text-right">{t("results.col.startRating")}</TableHead>
+            <TableHead className="text-right">{t("results.col.after")}</TableHead>
+            <TableHead className="text-right">{t("results.col.change")}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -83,7 +85,7 @@ export function ResultsTable({
                   )}
                   {p.provisional && (
                     <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
-                      provisional
+                      {t("results.provisional")}
                     </Badge>
                   )}
                 </div>
@@ -106,7 +108,7 @@ export function ResultsTable({
                   value={startRatings[p.id] ?? 0}
                   onChange={(e) => onRatingChange(p.id, Number(e.target.value))}
                   className="ml-auto h-8 w-24 text-right font-mono"
-                  aria-label={`Starting rating for ${p.name}`}
+                  aria-label={t("results.startRatingFor", { name: p.name })}
                 />
               </TableCell>
               <TableCell className="text-right font-mono font-semibold">
