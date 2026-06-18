@@ -11,7 +11,43 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-export function MatchesTable({ matches }: { matches: MatchContribution[] }) {
+function PlayerName({
+  id,
+  name,
+  highlightId,
+  profileUrls,
+  className = "",
+}: {
+  id: string
+  name: string
+  highlightId?: string
+  profileUrls: Record<string, string | null>
+  className?: string
+}) {
+  const url = profileUrls[id]
+  const highlighted = highlightId === id
+  const base = `underline-offset-4 hover:text-primary hover:underline ${
+    highlighted ? "rounded bg-primary/10 px-1 font-semibold text-foreground" : ""
+  } ${className}`
+  if (url) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className={base}>
+        {name}
+      </a>
+    )
+  }
+  return <span className={base}>{name}</span>
+}
+
+export function MatchesTable({
+  matches,
+  highlightId,
+  profileUrls = {},
+}: {
+  matches: MatchContribution[]
+  highlightId?: string
+  profileUrls?: Record<string, string | null>
+}) {
   const { t } = useI18n()
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
@@ -32,7 +68,13 @@ export function MatchesTable({ matches }: { matches: MatchContribution[] }) {
             <TableRow key={`${m.stageName}-${m.gameId}-${i}`}>
               <TableCell>
                 <div className="flex flex-col">
-                  <span className="font-medium">{m.winnerName}</span>
+                  <PlayerName
+                    id={m.winnerId}
+                    name={m.winnerName}
+                    highlightId={highlightId}
+                    profileUrls={profileUrls}
+                    className="font-medium"
+                  />
                   <span className="font-mono text-xs text-muted-foreground">
                     {m.winnerRatingBefore.toFixed(1)}
                   </span>
@@ -43,7 +85,13 @@ export function MatchesTable({ matches }: { matches: MatchContribution[] }) {
               </TableCell>
               <TableCell>
                 <div className="flex flex-col">
-                  <span className="text-muted-foreground">{m.loserName}</span>
+                  <PlayerName
+                    id={m.loserId}
+                    name={m.loserName}
+                    highlightId={highlightId}
+                    profileUrls={profileUrls}
+                    className="text-muted-foreground"
+                  />
                   <span className="font-mono text-xs text-muted-foreground/70">
                     {m.loserRatingBefore.toFixed(1)}
                   </span>
