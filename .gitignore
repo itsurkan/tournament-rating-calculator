@@ -17,6 +17,7 @@ node_modules
 # generated / build artifacts
 next-env.d.ts
 *.tsbuildinfo
+/out/
 
 # npm lockfile (this project uses pnpm)
 package-lock.json
