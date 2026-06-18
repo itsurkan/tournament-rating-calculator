@@ -35,17 +35,26 @@ export default {
     const path = url.pathname.replace(/^\/+/, "") // strip leading slash(es)
     const target = `${LIGAS}/${path}${url.search}`
 
-    const upstream = await fetch(target, {
-      headers: { accept: "application/json" },
-    })
-    const body = await upstream.text()
+    try {
+      const upstream = await fetch(target, {
+        headers: { accept: "application/json" },
+      })
+      const body = await upstream.text()
 
-    return new Response(body, {
-      status: upstream.status,
-      headers: {
-        ...corsHeaders(origin),
-        "content-type": upstream.headers.get("content-type") ?? "application/json",
-      },
-    })
+      return new Response(body, {
+        status: upstream.status,
+        headers: {
+          ...corsHeaders(origin),
+          "content-type": upstream.headers.get("content-type") ?? "application/json",
+        },
+      })
+    } catch {
+      // Upstream unreachable/timeout — still return CORS headers so the browser
+      // surfaces a clean 502 instead of a misleading "CORS error".
+      return new Response("Bad Gateway", {
+        status: 502,
+        headers: corsHeaders(origin),
+      })
+    }
   },
 }

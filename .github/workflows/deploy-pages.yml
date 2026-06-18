@@ -30,6 +30,15 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Require proxy URL
+        env:
+          NEXT_PUBLIC_PROXY_URL: ${{ vars.NEXT_PUBLIC_PROXY_URL }}
+        run: |
+          if [ -z "$NEXT_PUBLIC_PROXY_URL" ]; then
+            echo "::error::NEXT_PUBLIC_PROXY_URL repo variable is not set. Set it before deploying (see the deploy runbook)." >&2
+            exit 1
+          fi
+
       - name: Build static export
         env:
           NEXT_PUBLIC_PROXY_URL: ${{ vars.NEXT_PUBLIC_PROXY_URL }}
