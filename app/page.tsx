@@ -251,7 +251,6 @@ export default function Page() {
                   <select
                     value={filterPlayerId}
                     onChange={(e) => setFilterPlayerId(e.target.value)}
-                    aria-label={t("matches.filterLabel")}
                     className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   >
                     <option value="">{t("matches.filterAll")}</option>

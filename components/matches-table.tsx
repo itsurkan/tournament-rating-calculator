@@ -26,17 +26,32 @@ function PlayerName({
 }) {
   const url = profileUrls[id]
   const highlighted = highlightId === id
-  const base = `underline-offset-4 hover:text-primary hover:underline ${
-    highlighted ? "rounded bg-primary/10 px-1 font-semibold text-foreground" : ""
-  } ${className}`
+  // Only links get the hover/underline affordance; plain-text names (no profile
+  // URL) must not look clickable. Mirrors results-table.tsx.
+  const highlight = highlighted
+    ? "rounded bg-primary/10 px-1 font-semibold text-foreground"
+    : ""
   if (url) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className={base}>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={[
+          "underline-offset-4 hover:text-primary hover:underline",
+          highlight,
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+      >
         {name}
       </a>
     )
   }
-  return <span className={base}>{name}</span>
+  return (
+    <span className={[highlight, className].filter(Boolean).join(" ")}>{name}</span>
+  )
 }
 
 export function MatchesTable({
