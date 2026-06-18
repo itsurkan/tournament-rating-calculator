@@ -1,0 +1,46 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [feat/github-pages]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages-deploy
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Enable pnpm 10
+        run: |
+          corepack enable
+          corepack prepare pnpm@10 --activate
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build static export
+        env:
+          NEXT_PUBLIC_PROXY_URL: ${{ vars.NEXT_PUBLIC_PROXY_URL }}
+        run: pnpm build
+
+      - name: Disable Jekyll (keep _next/)
+        run: touch out/.nojekyll
+
+      - name: Publish to gh-pages
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          folder: out
+          branch: gh-pages
+          single-commit: true
