@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import type { TournamentResponse } from "@/lib/types"
+import { fetchTournament, LigasError } from "@/lib/ligas"
 import { calculateRatings, type Match, type PlayerInput } from "@/lib/rating"
 import { ResultsTable } from "@/components/results-table"
 import { MatchesTable } from "@/components/matches-table"
@@ -41,25 +42,15 @@ export default function Page() {
     setLoading(true)
     setData(null)
     try {
-      const res = await fetch("/api/tournament", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ url }),
-      })
-      const json = await res.json()
-      if (!res.ok) {
-        setErrorKey(toErrorKey(json?.code))
-        return
-      }
-      const payload = json as TournamentResponse
+      const payload = await fetchTournament(url)
       const ratings: Record<string, number> = {}
       for (const p of payload.players) {
         ratings[p.id] = p.ranking != null ? Math.round(p.ranking * 100) / 100 : DEFAULT_RATING
       }
       setStartRatings(ratings)
       setData(payload)
-    } catch {
-      setErrorKey("error.unknown")
+    } catch (err) {
+      setErrorKey(toErrorKey(err instanceof LigasError ? err.code : undefined))
     } finally {
       setLoading(false)
     }

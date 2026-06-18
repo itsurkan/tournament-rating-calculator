@@ -1,6 +1,29 @@
-import { type NextRequest, NextResponse } from "next/server"
+// Browser-side ligas.io client.
+//
+// On GitHub Pages there is no server, and ligas.io sends no CORS headers, so the
+// browser cannot call ligas.io directly. Every request goes through a Cloudflare
+// Worker pass-through proxy (NEXT_PUBLIC_PROXY_URL) that forwards `/<path>` to
+// `https://ligas.io/api/<path>` and adds CORS headers.
+//
+// This is a faithful port of the former `app/api/tournament/route.ts`; it returns
+// the same TournamentResponse shape so the UI is unchanged.
+import type { TournamentResponse } from "@/lib/types"
 
-const LIGAS = "https://ligas.io/api"
+// Proxy base, e.g. https://tournament-rating-proxy.<sub>.workers.dev (no trailing
+// slash, no /api). `${LIGAS}/tournaments/x` -> proxy -> ligas.io/api/tournaments/x
+const LIGAS = (process.env.NEXT_PUBLIC_PROXY_URL ?? "").replace(/\/+$/, "")
+
+/** Error codes the UI maps to i18n keys via `error.<code>`. */
+export type LigasErrorCode = "no_tournament_id" | "fetch_failed"
+
+export class LigasError extends Error {
+  code: LigasErrorCode
+  constructor(code: LigasErrorCode) {
+    super(code)
+    this.code = code
+    this.name = "LigasError"
+  }
+}
 
 // Extract the short tournament id from any ligas.io tournament URL or a raw id.
 // e.g. https://ligas.io/tournament/2el6ef/results -> "2el6ef"
@@ -9,7 +32,6 @@ function parseTournamentId(input: string): string | null {
   if (!trimmed) return null
   const match = trimmed.match(/tournament\/([a-z0-9]+)/i)
   if (match) return match[1]
-  // Allow passing a bare id.
   if (/^[a-z0-9]{4,12}$/i.test(trimmed)) return trimmed
   return null
 }
@@ -50,34 +72,22 @@ function num(v: unknown): number | null {
 type Ranking = { shortId: string; alias: string | null }
 
 type Snapshot = {
-  /** Rating to feed the calculator (null = unrated/provisional). */
   rating: number | null
-  /** Weight to feed the calculator. */
   weight: number
-  /** True if this exact tournament was already processed for the player. */
   processed: boolean
-  /** Alias of the ranking the player belongs to (e.g. "men"), for profile links. */
   rankingAlias: string | null
 }
 
 // The rating/weight to use as this player's starting point for the tournament.
-//
-// A player's ranking history holds one entry per rated tournament, keyed by the
-// tournament's short id, with both the pre-tournament (`initial`/`initialWeight`)
-// and post-tournament (`final`/`finalWeight`) values.
-//
-//   - If THIS tournament is already in the player's history, ligas has processed
-//     it — use the PRE-tournament values it actually used, so we can reproduce
-//     ligas' official result instead of double-counting the event.
-//   - Otherwise the tournament is unprocessed: use the player's CURRENT rating,
-//     i.e. the `final`/`finalWeight` of their most recent history entry.
+//   - If THIS tournament is already in the player's history, use the PRE-tournament
+//     values ligas used (reproduce its official result).
+//   - Otherwise use the player's CURRENT rating (latest history entry's `final`).
 async function readSnapshot(
   alias: string,
   rankings: Ranking[],
   pid: string,
   tournamentId: string,
 ): Promise<Snapshot | null> {
-  // Keep each entry tagged with the ranking it came from (men / women / ...).
   const entries: Array<any & { _rankingAlias: string | null }> = []
   await Promise.all(
     rankings.map(async (r) => {
@@ -103,7 +113,6 @@ async function readSnapshot(
     }
   }
 
-  // Current rating = the most recent history entry's post-tournament value.
   const entryTime = (e: any) => Date.parse(e?.actualDate ?? e?.date ?? "") || 0
   let latest: any = entries[0]
   for (const e of entries) {
@@ -117,16 +126,12 @@ async function readSnapshot(
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function fetchTournament(input: string): Promise<TournamentResponse> {
+  const id = parseTournamentId(input)
+  if (!id) throw new LigasError("no_tournament_id")
+
   try {
-    const body = await req.json().catch(() => ({}))
-    const id = parseTournamentId(String(body?.url ?? ""))
-    if (!id) {
-      return NextResponse.json(
-        { code: "no_tournament_id" },
-        { status: 400 },
-      )
-    }
+    if (!LIGAS) throw new Error("NEXT_PUBLIC_PROXY_URL is not set")
 
     const [tournament, gamesRaw, standingRaw] = await Promise.all([
       getJson(`${LIGAS}/tournaments/${id}`),
@@ -138,12 +143,10 @@ export async function POST(req: NextRequest) {
     const games = asArray(gamesRaw)
     const standing = asArray(standingRaw)
 
-    // Build the unique player roster from the standing.
     const rosterMap = new Map<string, string>()
     for (const row of standing) {
       if (row?.id && row?.name) rosterMap.set(row.id, row.name)
     }
-    // Fall back to game participants if standing is empty.
     if (rosterMap.size === 0) {
       for (const g of games) {
         if (g?.participant1) rosterMap.set(g.participant1, g.participant1Name ?? g.participant1)
@@ -153,17 +156,12 @@ export async function POST(req: NextRequest) {
 
     const playerIds = Array.from(rosterMap.keys())
 
-    // Rankings for this org (e.g. men / women) — used to look up each player's
-    // pre-tournament rating/weight and to build their profile link.
     const rankings: Ranking[] = asArray(
       await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`).catch(() => []),
     )
       .map((r: any) => ({ shortId: r?.shortId, alias: r?.alias ?? null }))
       .filter((r): r is Ranking => typeof r.shortId === "string")
 
-    // For each player, resolve the rating + weight they bring into this
-    // tournament: pre-tournament values if ligas already processed it, otherwise
-    // their current rating (latest history entry).
     const ratings = await Promise.all(
       playerIds.map(async (pid) => {
         try {
@@ -171,9 +169,6 @@ export async function POST(req: NextRequest) {
             getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`).catch(() => null),
             readSnapshot(orgAlias, rankings, pid, id),
           ])
-          // Use the snapshot (pre-tournament `initial` if processed, else the
-          // latest history `final`). Fall back to the live profile ranking only
-          // when the player has no ranking history at all.
           const rating = snap ? snap.rating : readRanking(profile)
           return {
             id: pid,
@@ -188,12 +183,7 @@ export async function POST(req: NextRequest) {
       }),
     )
 
-    // A tournament counts as already-processed if ligas has folded it into any
-    // player's rating history.
     const processed = ratings.some((r) => r.processed)
-
-    // Fall back to the org's first ranking alias when a player's own ranking is
-    // unknown (e.g. a brand-new player with no history yet).
     const fallbackAlias = rankings[0]?.alias ?? null
 
     const players = playerIds.map((pid) => {
@@ -211,8 +201,6 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    // Parse finished games into directional matches (winner / loser).
-    // result is "p1:p2"; ignore byes / unplayed / 0:0 entries.
     const matches = games
       .map((g) => {
         const result: string = g?.result ?? ""
@@ -220,7 +208,7 @@ export async function POST(req: NextRequest) {
         if (!m) return null
         const s1 = Number(m[1])
         const s2 = Number(m[2])
-        if (s1 === s2) return null // not a decided match
+        if (s1 === s2) return null
         const p1 = g?.participant1
         const p2 = g?.participant2
         if (!p1 || !p2) return null
@@ -237,7 +225,7 @@ export async function POST(req: NextRequest) {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
 
-    return NextResponse.json({
+    return {
       tournament: {
         id,
         name: tournament?.name ?? id,
@@ -251,12 +239,10 @@ export async function POST(req: NextRequest) {
       },
       players,
       matches,
-    })
+    }
   } catch (err) {
-    console.log("[v0] tournament fetch error:", (err as Error).message)
-    return NextResponse.json(
-      { code: "fetch_failed" },
-      { status: 502 },
-    )
+    if (err instanceof LigasError) throw err
+    console.error("tournament fetch error:", (err as Error).message)
+    throw new LigasError("fetch_failed")
   }
 }
