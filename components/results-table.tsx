@@ -13,6 +13,44 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { ArrowDown, ArrowUp, Minus } from "lucide-react"
+import { useEffect, useState } from "react"
+
+function RatingInput({
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  value: number
+  onChange: (value: number) => void
+  ariaLabel: string
+}) {
+  // Local string draft so the field can be cleared and edited freely
+  // (a numeric `0` would otherwise stick and turn typed input into "01").
+  const [draft, setDraft] = useState(String(value))
+
+  // Re-sync when the value changes from outside (e.g. tournament loaded).
+  useEffect(() => {
+    if (Number(draft) !== value) setDraft(String(value))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value])
+
+  return (
+    <Input
+      type="number"
+      step="0.1"
+      min="0"
+      value={draft}
+      onChange={(e) => {
+        const next = e.target.value
+        setDraft(next)
+        onChange(next === "" ? 0 : Number(next))
+      }}
+      onBlur={() => setDraft(String(value))}
+      className="ml-auto h-8 w-24 text-right font-mono"
+      aria-label={ariaLabel}
+    />
+  )
+}
 
 function ChangeCell({ change }: { change: number }) {
   if (Math.abs(change) < 0.05) {
@@ -101,14 +139,10 @@ export function ResultsTable({
                 {p.weightAfter}
               </TableCell>
               <TableCell className="text-right">
-                <Input
-                  type="number"
-                  step="0.1"
-                  min="0"
+                <RatingInput
                   value={startRatings[p.id] ?? 0}
-                  onChange={(e) => onRatingChange(p.id, Number(e.target.value))}
-                  className="ml-auto h-8 w-24 text-right font-mono"
-                  aria-label={t("results.startRatingFor", { name: p.name })}
+                  onChange={(value) => onRatingChange(p.id, value)}
+                  ariaLabel={t("results.startRatingFor", { name: p.name })}
                 />
               </TableCell>
               <TableCell className="text-right font-mono font-semibold">

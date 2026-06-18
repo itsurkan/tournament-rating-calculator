@@ -38,6 +38,9 @@ const en = {
   "players.factorAria": "Tournament factor (coefficient)",
   "matches.help":
     "Each match shows the integer points both players earned, based on their pre-tournament ratings. Points are summed per player, then scaled by weight and the tournament factor.",
+  "matches.filterLabel": "Participant",
+  "matches.filterAll": "All participants",
+  "matches.filterClear": "Show all",
   "footer.createdBy": "Created by Ivan Tsurkan",
   "results.col.player": "Player",
   "results.col.wl": "W / L",
@@ -82,6 +85,9 @@ const uk: Record<TKey, string> = {
   "players.factorAria": "Коефіцієнт турніру",
   "matches.help":
     "Кожен матч показує цілі очки, які заробили обидва гравці, на основі їхніх дотурнірних рейтингів. Очки сумуються по кожному гравцю, а потім масштабуються за вагою та коефіцієнтом турніру.",
+  "matches.filterLabel": "Учасник",
+  "matches.filterAll": "Усі учасники",
+  "matches.filterClear": "Показати всі",
   "footer.createdBy": "Створив Іван Цуркан",
   "results.col.player": "Гравець",
   "results.col.wl": "W / L",

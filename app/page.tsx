@@ -35,12 +35,14 @@ export default function Page() {
   const [data, setData] = useState<TournamentResponse | null>(null)
   const [startRatings, setStartRatings] = useState<Record<string, number>>({})
   const [factor, setFactor] = useState(1)
+  const [filterPlayerId, setFilterPlayerId] = useState("")
 
   async function handleCalculate(e?: React.FormEvent) {
     e?.preventDefault()
     setErrorKey(null)
     setLoading(true)
     setData(null)
+    setFilterPlayerId("")
     try {
       const payload = await fetchTournament(url)
       const ratings: Record<string, number> = {}
@@ -74,6 +76,22 @@ export default function Page() {
     }))
     return calculateRatings(players, matches, factor)
   }, [data, startRatings, factor])
+
+  const filteredMatches = useMemo(() => {
+    if (!result) return []
+    if (!filterPlayerId) return result.matches
+    return result.matches.filter(
+      (m) => m.winnerId === filterPlayerId || m.loserId === filterPlayerId,
+    )
+  }, [result, filterPlayerId])
+
+  const matchProfileUrls = useMemo(
+    () =>
+      data
+        ? Object.fromEntries(data.players.map((p) => [p.id, p.profileUrl]))
+        : {},
+    [data],
+  )
 
   function setRating(id: string, value: number) {
     setStartRatings((prev) => ({ ...prev, [id]: value }))
@@ -218,7 +236,37 @@ export default function Page() {
               <p className="mb-3 text-sm text-muted-foreground">
                 {t("matches.help")}
               </p>
-              <MatchesTable matches={result.matches} />
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                  {t("matches.filterLabel")}
+                  <select
+                    value={filterPlayerId}
+                    onChange={(e) => setFilterPlayerId(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">{t("matches.filterAll")}</option>
+                    {result.players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {filterPlayerId && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterPlayerId("")}
+                    className="text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    {t("matches.filterClear")}
+                  </button>
+                )}
+              </div>
+              <MatchesTable
+                matches={filteredMatches}
+                highlightId={filterPlayerId || undefined}
+                profileUrls={matchProfileUrls}
+              />
             </TabsContent>
           </Tabs>
         </section>
