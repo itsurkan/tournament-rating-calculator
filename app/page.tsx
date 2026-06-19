@@ -6,6 +6,7 @@ import { calculateRatings, type Match, type PlayerInput } from "@/lib/rating"
 import { ResultsTable } from "@/components/results-table"
 import { MatchesTable } from "@/components/matches-table"
 import { LanguageSwitcher } from "@/components/language-switcher"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -252,7 +253,10 @@ export default function Page() {
             <span className="size-1.5 rounded-full bg-primary" />
             {t("header.eyebrow")}
           </div>
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            <LanguageSwitcher />
+          </div>
         </div>
         <h1 className="text-balance text-3xl font-semibold tracking-tight md:text-4xl">
           {t("header.title")}
