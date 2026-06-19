@@ -17,9 +17,9 @@ function parseTournamentId(input: string): string | null {
 async function getJson(url: string) {
   const res = await fetch(url, {
     headers: { accept: "application/json" },
-    // Cache each upstream ligas.io response for an hour in Vercel's Data Cache,
+    // Cache each upstream ligas.io response for 15 min in Vercel's Data Cache,
     // so even a CDN miss doesn't re-hit ligas for every player.
-    next: { revalidate: 3600 },
+    next: { revalidate: 900 },
   })
   if (!res.ok) throw new Error(`ligas ${res.status} for ${url}`)
   return res.json()
