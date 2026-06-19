@@ -28,8 +28,10 @@ function PlayerName({
   const highlighted = highlightId === id
   // Only links get the hover/underline affordance; plain-text names (no profile
   // URL) must not look clickable. Mirrors results-table.tsx.
+  // Keep the column's own color (green winner / muted loser) when highlighted —
+  // only add a clearly-visible amber pill + weight, never override the text color.
   const highlight = highlighted
-    ? "rounded bg-primary/10 px-1 font-semibold text-foreground"
+    ? "rounded px-1 font-semibold bg-amber-400/20 ring-1 ring-inset ring-amber-500/50"
     : ""
   if (url) {
     return (
@@ -88,7 +90,7 @@ export function MatchesTable({
                     name={m.winnerName}
                     highlightId={highlightId}
                     profileUrls={profileUrls}
-                    className="font-medium"
+                    className="font-semibold text-emerald-600 dark:text-emerald-400"
                   />
                   <span className="font-mono text-xs text-muted-foreground">
                     {m.winnerRatingBefore.toFixed(1)}
@@ -116,7 +118,7 @@ export function MatchesTable({
                 {m.stageName}
               </TableCell>
               <TableCell className="text-right font-mono">
-                <span className="text-primary">
+                <span className="font-medium text-emerald-600 dark:text-emerald-400">
                   {m.winnerPoints >= 0 ? "+" : ""}
                   {m.winnerPoints}
                 </span>

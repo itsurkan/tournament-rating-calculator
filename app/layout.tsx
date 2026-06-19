@@ -2,6 +2,20 @@ import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import './globals.css'
 import { LanguageProvider } from '@/lib/i18n'
+import { ThemeProvider } from '@/lib/theme'
+
+// Runs before first paint to set the theme class from the stored choice (or the
+// system preference), so there is no flash of the wrong theme. Mirrors
+// applyTheme() in lib/theme.tsx.
+const themeScript = `
+(function(){try{
+  var m = localStorage.getItem('theme');
+  var dark = m === 'dark' || ((m === 'system' || !m) && matchMedia('(prefers-color-scheme: dark)').matches);
+  var c = document.documentElement.classList;
+  c.add(dark ? 'dark' : 'light');
+  document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+}catch(e){}})();
+`
 
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({
@@ -34,8 +48,11 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  colorScheme: 'dark',
-  themeColor: '#1b1b1f',
+  colorScheme: 'light dark',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#1b1b1f' },
+  ],
 }
 
 export default function RootLayout({
@@ -44,9 +61,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="uk" className={`dark ${geistSans.variable} ${geistMono.variable}`}>
+    <html
+      lang="uk"
+      className={`${geistSans.variable} ${geistMono.variable}`}
+      suppressHydrationWarning
+    >
       <body className="font-sans antialiased bg-background text-foreground">
-        <LanguageProvider>{children}</LanguageProvider>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+        <ThemeProvider>
+          <LanguageProvider>{children}</LanguageProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

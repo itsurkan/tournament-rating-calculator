@@ -1,12 +1,13 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { TournamentResponse } from "@/lib/types"
 import { fetchTournament, LigasError } from "@/lib/ligas"
 import { calculateRatings, type Match, type PlayerInput } from "@/lib/rating"
 import { ResultsTable } from "@/components/results-table"
 import { MatchesTable } from "@/components/matches-table"
 import { LanguageSwitcher } from "@/components/language-switcher"
+import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
@@ -15,6 +16,17 @@ import { Loader2, MapPin, Calendar, Trophy } from "lucide-react"
 
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
+
+// Recently viewed tournaments shown in the left panel.
+const RECENTS_KEY = "recentTournaments"
+const MAX_RECENTS = 20
+type RecentItem = {
+  id: string
+  url: string
+  name: string
+  orgName: string | null
+  viewedAt: number
+}
 
 // The API reports failures as stable codes; map them to known dictionary keys.
 const ERROR_KEYS = new Set<TKey>([
@@ -36,27 +48,102 @@ export default function Page() {
   const [startRatings, setStartRatings] = useState<Record<string, number>>({})
   const [factor, setFactor] = useState(1)
   const [filterPlayerId, setFilterPlayerId] = useState("")
+  const [recents, setRecents] = useState<RecentItem[]>([])
 
-  async function handleCalculate(e?: React.FormEvent) {
-    e?.preventDefault()
+  // Every tournament the user has viewed, newest first, persisted locally so the
+  // left panel survives reloads. The first entry is auto-loaded on mount (and is
+  // served instantly from Vercel's edge cache).
+  function addRecent(tour: TournamentResponse["tournament"]) {
+    setRecents((prev) => {
+      const item: RecentItem = {
+        id: tour.id,
+        url: tour.url,
+        name: tour.name,
+        orgName: tour.orgName ?? null,
+        viewedAt: Date.now(),
+      }
+      const next = [item, ...prev.filter((r) => r.id !== tour.id)].slice(0, MAX_RECENTS)
+      try {
+        localStorage.setItem(RECENTS_KEY, JSON.stringify(next))
+      } catch {
+        // localStorage unavailable (private mode) — non-fatal
+      }
+      return next
+    })
+  }
+
+  function clearRecents() {
+    setRecents([])
+    try {
+      localStorage.removeItem(RECENTS_KEY)
+    } catch {
+      // non-fatal
+    }
+  }
+
+  async function runCalculate(input: string) {
+    const target = input.trim()
+    if (!target) return
     setErrorKey(null)
     setLoading(true)
     setData(null)
     setFilterPlayerId("")
     try {
-      const payload = await fetchTournament(url)
+      // Static export (GitHub Pages) has no API route — fetch ligas.io directly
+      // from the browser via the proxy.
+      const payload = await fetchTournament(target)
       const ratings: Record<string, number> = {}
       for (const p of payload.players) {
         ratings[p.id] = p.ranking != null ? Math.round(p.ranking * 100) / 100 : DEFAULT_RATING
       }
       setStartRatings(ratings)
       setData(payload)
+      setUrl(payload.tournament.url)
+      addRecent(payload.tournament)
+      // Reflect the loaded tournament in the page URL so it can be shared,
+      // bookmarked, or reopened directly (?t=<id>).
+      try {
+        window.history.replaceState(null, "", `?t=${payload.tournament.id}`)
+      } catch {
+        // history unavailable — non-fatal
+      }
     } catch (err) {
       setErrorKey(toErrorKey(err instanceof LigasError ? err.code : undefined))
     } finally {
       setLoading(false)
     }
   }
+
+  function handleCalculate(e?: React.FormEvent) {
+    e?.preventDefault()
+    void runCalculate(url)
+  }
+
+  // On first mount, restore the recents list for the panel. Only auto-load a
+  // tournament when one is named in the URL (?t=<id>) — a bare "/" stays empty.
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(RECENTS_KEY)
+      if (raw) {
+        const stored = JSON.parse(raw) as RecentItem[]
+        if (Array.isArray(stored) && stored.length > 0) setRecents(stored)
+      }
+    } catch {
+      // ignore corrupt/unavailable storage
+    }
+
+    let initial: string | null = null
+    try {
+      initial = new URLSearchParams(window.location.search).get("t")
+    } catch {
+      initial = null
+    }
+    if (initial) {
+      setUrl(initial)
+      void runCalculate(initial)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const result = useMemo(() => {
     if (!data) return null
@@ -97,15 +184,76 @@ export default function Page() {
     setStartRatings((prev) => ({ ...prev, [id]: value }))
   }
 
+  const activeId = data?.tournament.id ?? null
+
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 md:py-16">
+    <div className="mx-auto flex min-h-screen w-full max-w-6xl gap-8 px-4 py-10 md:py-16">
+      <aside className="hidden w-60 shrink-0 lg:block">
+        <div className="sticky top-10">
+          <div className="mb-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-foreground">
+              {t("recent.title")}
+            </h2>
+            {recents.length > 0 && (
+              <button
+                type="button"
+                onClick={clearRecents}
+                className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+              >
+                {t("recent.clear")}
+              </button>
+            )}
+          </div>
+          {recents.length === 0 ? (
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {t("recent.empty")}
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-1">
+              {recents.map((r) => {
+                const active = r.id === activeId
+                return (
+                  <li key={r.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUrl(r.url)
+                        void runCalculate(r.url)
+                      }}
+                      className={`flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors ${
+                        active
+                          ? "border-primary/40 bg-primary/10"
+                          : "border-transparent hover:border-border hover:bg-card"
+                      }`}
+                    >
+                      <span className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
+                        {r.name}
+                      </span>
+                      {r.orgName && (
+                        <span className="truncate text-xs text-muted-foreground">
+                          {r.orgName}
+                        </span>
+                      )}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+        </div>
+      </aside>
+
+      <main className="min-w-0 flex-1">
       <header className="mb-8">
         <div className="mb-3 flex items-start justify-between gap-4">
           <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
             <span className="size-1.5 rounded-full bg-primary" />
             {t("header.eyebrow")}
           </div>
-          <LanguageSwitcher />
+          <div className="flex items-center gap-2">
+            <ThemeSwitcher />
+            <LanguageSwitcher />
+          </div>
         </div>
         <h1 className="text-balance text-3xl font-semibold tracking-tight md:text-4xl">
           {t("header.title")}
@@ -283,6 +431,7 @@ export default function Page() {
           @Itsurkan
         </a>
       </footer>
-    </main>
+      </main>
+    </div>
   )
 }
