@@ -17,7 +17,9 @@ function parseTournamentId(input: string): string | null {
 async function getJson(url: string) {
   const res = await fetch(url, {
     headers: { accept: "application/json" },
-    cache: "no-store",
+    // Cache each upstream ligas.io response for an hour in Vercel's Data Cache,
+    // so even a CDN miss doesn't re-hit ligas for every player.
+    next: { revalidate: 3600 },
   })
   if (!res.ok) throw new Error(`ligas ${res.status} for ${url}`)
   return res.json()
@@ -117,14 +119,15 @@ async function readSnapshot(
   }
 }
 
-export async function POST(req: NextRequest) {
+// GET (not POST) so Vercel's CDN can cache the whole computed result per
+// tournament. The `id` param accepts a full ligas.io URL or a bare short id.
+export async function GET(req: NextRequest) {
   try {
-    const body = await req.json().catch(() => ({}))
-    const id = parseTournamentId(String(body?.url ?? ""))
+    const id = parseTournamentId(req.nextUrl.searchParams.get("id") ?? "")
     if (!id) {
       return NextResponse.json(
         { code: "no_tournament_id" },
-        { status: 400 },
+        { status: 400, headers: { "cache-control": "no-store" } },
       )
     }
 
@@ -237,26 +240,35 @@ export async function POST(req: NextRequest) {
       })
       .filter((x): x is NonNullable<typeof x> => x !== null)
 
-    return NextResponse.json({
-      tournament: {
-        id,
-        name: tournament?.name ?? id,
-        orgName: tournament?.orgName ?? null,
-        orgAlias,
-        location: tournament?.location ?? null,
-        start: tournament?.start ?? null,
-        format: tournament?.format ?? null,
-        processed,
-        url: `https://ligas.io/tournament/${id}/results`,
+    return NextResponse.json(
+      {
+        tournament: {
+          id,
+          name: tournament?.name ?? id,
+          orgName: tournament?.orgName ?? null,
+          orgAlias,
+          location: tournament?.location ?? null,
+          start: tournament?.start ?? null,
+          format: tournament?.format ?? null,
+          processed,
+          url: `https://ligas.io/tournament/${id}/results`,
+        },
+        players,
+        matches,
       },
-      players,
-      matches,
-    })
+      {
+        // Serve the same computed result from Vercel's edge for an hour; refresh
+        // in the background for a day after that so a reload is never blocked.
+        headers: {
+          "cache-control": "public, s-maxage=3600, stale-while-revalidate=86400",
+        },
+      },
+    )
   } catch (err) {
     console.log("[v0] tournament fetch error:", (err as Error).message)
     return NextResponse.json(
       { code: "fetch_failed" },
-      { status: 502 },
+      { status: 502, headers: { "cache-control": "no-store" } },
     )
   }
 }
