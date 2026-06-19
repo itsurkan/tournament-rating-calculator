@@ -65,7 +65,7 @@ function ChangeCell({ change }: { change: number }) {
   return (
     <span
       className={`inline-flex items-center gap-1 font-mono font-medium ${
-        up ? "text-primary" : "text-destructive"
+        up ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"
       }`}
     >
       {up ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />}
