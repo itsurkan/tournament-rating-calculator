@@ -12,7 +12,7 @@ import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, MapPin, Calendar, Trophy } from "lucide-react"
+import { Loader2, MapPin, Calendar, Trophy, ChevronDown } from "lucide-react"
 
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
@@ -49,6 +49,7 @@ export default function Page() {
   const [factor, setFactor] = useState(1)
   const [filterPlayerId, setFilterPlayerId] = useState("")
   const [recents, setRecents] = useState<RecentItem[]>([])
+  const [recentsOpen, setRecentsOpen] = useState(false)
 
   // Every tournament the user has viewed, newest first, persisted locally so the
   // left panel survives reloads. The first entry is auto-loaded on mount (and is
@@ -186,6 +187,53 @@ export default function Page() {
 
   const activeId = data?.tournament.id ?? null
 
+  function selectRecent(r: RecentItem, afterSelect?: () => void) {
+    setUrl(r.url)
+    void runCalculate(r.url)
+    afterSelect?.()
+  }
+
+  // Shared list of recent tournaments — rendered in both the desktop sidebar and
+  // the mobile collapsible panel. afterSelect lets the mobile panel close itself.
+  function renderRecentsList(afterSelect?: () => void) {
+    if (recents.length === 0) {
+      return (
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          {t("recent.empty")}
+        </p>
+      )
+    }
+    return (
+      <ul className="flex flex-col gap-1">
+        {recents.map((r) => {
+          const active = r.id === activeId
+          return (
+            <li key={r.id}>
+              <button
+                type="button"
+                onClick={() => selectRecent(r, afterSelect)}
+                className={`flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors ${
+                  active
+                    ? "border-primary/40 bg-primary/10"
+                    : "border-transparent hover:border-border hover:bg-card"
+                }`}
+              >
+                <span className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
+                  {r.name}
+                </span>
+                {r.orgName && (
+                  <span className="truncate text-xs text-muted-foreground">
+                    {r.orgName}
+                  </span>
+                )}
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl gap-8 px-4 py-10 md:py-16">
       <aside className="hidden w-60 shrink-0 lg:block">
@@ -204,42 +252,7 @@ export default function Page() {
               </button>
             )}
           </div>
-          {recents.length === 0 ? (
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t("recent.empty")}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {recents.map((r) => {
-                const active = r.id === activeId
-                return (
-                  <li key={r.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setUrl(r.url)
-                        void runCalculate(r.url)
-                      }}
-                      className={`flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors ${
-                        active
-                          ? "border-primary/40 bg-primary/10"
-                          : "border-transparent hover:border-border hover:bg-card"
-                      }`}
-                    >
-                      <span className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
-                        {r.name}
-                      </span>
-                      {r.orgName && (
-                        <span className="truncate text-xs text-muted-foreground">
-                          {r.orgName}
-                        </span>
-                      )}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          {renderRecentsList()}
         </div>
       </aside>
 
@@ -295,6 +308,43 @@ export default function Page() {
           {EXAMPLE}
         </button>
       </div>
+
+      {recents.length > 0 && (
+        <div className="mt-6 lg:hidden">
+          <button
+            type="button"
+            onClick={() => setRecentsOpen((open) => !open)}
+            aria-expanded={recentsOpen}
+            className="flex w-full items-center justify-between rounded-lg border border-border bg-card px-4 py-3 text-left transition-colors hover:bg-card/80"
+          >
+            <span className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              {t("recent.title")}
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                {recents.length}
+              </span>
+            </span>
+            <ChevronDown
+              className={`size-4 shrink-0 text-muted-foreground transition-transform ${
+                recentsOpen ? "rotate-180" : ""
+              }`}
+            />
+          </button>
+          {recentsOpen && (
+            <div className="mt-2">
+              <div className="mb-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={clearRecents}
+                  className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                >
+                  {t("recent.clear")}
+                </button>
+              </div>
+              {renderRecentsList(() => setRecentsOpen(false))}
+            </div>
+          )}
+        </div>
+      )}
 
       {errorKey && (
         <div className="mt-6 rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
