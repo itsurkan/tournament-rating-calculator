@@ -1,9 +1,21 @@
 // FNTU / ligas.io ("УТТФ") rating engine.
 //
-// This is a faithful port of the official-adjacent calculation used by ligas.io
+// Based on the official-adjacent calculation used by ligas.io
 // (see https://github.com/sdemchenko/rating). It is NOT an Elo/0-15 system —
 // the "0-15" in a tournament name is only the eligibility category, while real
 // ratings are unbounded (top players reach 80-90+).
+//
+// DELIBERATE DIVERGENCE FROM THE REFERENCE: the 2023-era reference does NOT
+// special-case unrated (rating <= 0) opponents in baseRating or in the loss
+// branch — it counts a 0-rated loss and penalizes losing to a 0-rated player.
+// Current ligas (post-2024 "unrated correction") ignores unrated opponents
+// entirely. We match current ligas, verified against 4 independent facts:
+//   - ag9gww: Руденко's опорний is 2.3, not 0 (reference would give 0)
+//   - 1xquom: Кейс's finalWeight is 20, not 22 (loss to unrated scores 0)
+//   - knajuc: Руденко loses 0 (not -2/-3) to unrated Квасніцький
+//   - knajuc: Цуркан loses 0 to (unrated) Руденко
+// A player with incoming rating <= 0 is treated as provisional: weight resets
+// to 0 and their starting rating is re-derived as the опорний (baseRating).
 //
 // How it works, per player, over a single tournament:
 //
@@ -12,7 +24,8 @@
 //        - Beat a stronger opponent        -> round((oppR - myR + 5) / 3)
 //        - Lost to a stronger opponent      -> -2 (gap <= 2), -1 (gap <= 20), else 0
 //        - Lost to a weaker opponent        -> -round((myR - oppR + 5) / 3)
-//        - Beating an unrated (<= 0) player gives 0; an unrated player loses 0.
+//        - Any match against an unrated (<= 0) player scores 0 — beating one,
+//          losing to one, and being unrated yourself all give 0.
 //      Contributions always use PRE-tournament ratings (a fixed snapshot).
 //
 //   2. contestWeight = min(20, sum of |contribution|)          (games played, capped)
@@ -111,6 +124,7 @@ export function contribution(
   }
   // lost
   if (myRating <= 0) return 0 // an unrated player loses nothing
+  if (opponentRating <= 0) return 0 // losing to an unrated player costs nothing (symmetric with beating one; confirmed by Кейс's finalWeight=20 in 1xquom)
   if (myRating <= opponentRating) {
     const gap = opponentRating - myRating
     if (gap <= 2) return -2
@@ -127,6 +141,13 @@ type PlayerMatch = { opponentRating: number; iWon: boolean }
  * "Опорний рейтинг" — the base rating a provisional (unrated) player is anchored
  * to, derived purely from this tournament's results: bounded above by the
  * strongest player they beat and the weakest player they lost to.
+ *
+ * Unrated (<= 0) opponents are IGNORED here — they don't anchor the rating.
+ * In particular a loss to an unrated player must NOT pin the anchor to 0:
+ * verified against ligas tournament ag9gww, where Руденко's "Рейтинг до" is 2.3
+ * (= min weakest RATED loss, strongest RATED win), not 0, despite a loss to an
+ * unrated opponent. Counting that 0 was a bug that zeroed real provisional
+ * ratings. (Also confirmed on 1b5s0t/2uktgv/k0x9k1 and Цуркан's gz3d1k = 1.4.)
  */
 function baseRating(matches: PlayerMatch[]): number {
   let maxWon = 0
@@ -134,6 +155,7 @@ function baseRating(matches: PlayerMatch[]): number {
   let won = false
   let lost = false
   for (const m of matches) {
+    if (m.opponentRating <= 0) continue // unrated opponents don't anchor the rating
     if (m.iWon) {
       maxWon = won ? Math.max(m.opponentRating, maxWon) : m.opponentRating
       won = true
@@ -158,12 +180,13 @@ export function calculateRatings(
 ): CalculationResult {
   const byId = new Map(players.map((p) => [p.id, p]))
 
-  // Raw pre-tournament rating used when this player is someone else's opponent.
-  const inputRating = new Map<string, number>()
-  for (const p of players) inputRating.set(p.id, p.rating > 0 ? p.rating : 0)
-
-  // Gather each player's matches with the opponent's pre-tournament rating.
-  const perPlayer = new Map<string, PlayerMatch[]>()
+  // Each player's matches as (opponentId, iWon). Opponent ratings are resolved
+  // LATER from effRating, not from a raw snapshot: a provisional opponent must
+  // be valued at the опорний they earn THIS tournament, not their (often 0)
+  // confirmed rating. Verified against ligas laij93 — opponents are valued at
+  // their in-tournament опорний (e.g. Цуркан there loses -3 to a 0.6 player and
+  // his official final only reproduces under that rule).
+  const perPlayer = new Map<string, { oppId: string; iWon: boolean }[]>()
   const wins = new Map<string, number>()
   const losses = new Map<string, number>()
   for (const p of players) {
@@ -173,36 +196,47 @@ export function calculateRatings(
   }
   for (const m of matches) {
     if (!byId.has(m.winnerId) || !byId.has(m.loserId)) continue
-    perPlayer.get(m.winnerId)!.push({ opponentRating: inputRating.get(m.loserId) ?? 0, iWon: true })
-    perPlayer.get(m.loserId)!.push({ opponentRating: inputRating.get(m.winnerId) ?? 0, iWon: false })
+    perPlayer.get(m.winnerId)!.push({ oppId: m.loserId, iWon: true })
+    perPlayer.get(m.loserId)!.push({ oppId: m.winnerId, iWon: false })
     wins.set(m.winnerId, (wins.get(m.winnerId) ?? 0) + 1)
     losses.set(m.loserId, (losses.get(m.loserId) ?? 0) + 1)
   }
 
-  // Effective starting rating (base rating for unrated players) and weight.
+  // A player is provisional when they arrive unrated (rating <= 0). Rated
+  // players keep their rating; provisional players are anchored to the опорний
+  // derived from this tournament. Since an опорний depends on opponents'
+  // ratings — and some opponents are themselves provisional — resolve everyone
+  // together by iterating to a fixed point (rated players are stable anchors).
+  const isProvisional = (p: PlayerInput) => p.rating <= 0
   const effRating = new Map<string, number>()
   const effWeight = new Map<string, number>()
   for (const p of players) {
-    const ms = perPlayer.get(p.id)!
-    if (p.rating <= 0 || p.weight <= 0) {
-      // Unrated / weightless: anchor to the derived base rating, weight 0.
-      effRating.set(p.id, baseRating(ms))
-      effWeight.set(p.id, 0)
-    } else {
-      effRating.set(p.id, p.rating)
-      effWeight.set(p.id, p.weight)
+    effRating.set(p.id, isProvisional(p) ? 0 : p.rating)
+    effWeight.set(p.id, isProvisional(p) ? 0 : p.weight)
+  }
+  const matchesFor = (id: string): PlayerMatch[] =>
+    perPlayer.get(id)!.map((o) => ({ opponentRating: effRating.get(o.oppId) ?? 0, iWon: o.iWon }))
+  for (let iter = 0; iter < 50; iter++) {
+    let changed = false
+    for (const p of players) {
+      if (!isProvisional(p)) continue
+      const v = baseRating(matchesFor(p.id))
+      if (Math.abs(v - (effRating.get(p.id) ?? 0)) > 1e-9) {
+        effRating.set(p.id, v)
+        changed = true
+      }
     }
+    if (!changed) break
   }
 
   const playerResults: PlayerResult[] = players.map((p) => {
-    const ms = perPlayer.get(p.id)!
     const initialRating = effRating.get(p.id)!
     const initialWeight = effWeight.get(p.id)!
 
     let sumContribution = 0
     let sumAbs = 0
-    for (const m of ms) {
-      const c = contribution(initialRating, m.opponentRating, m.iWon)
+    for (const o of perPlayer.get(p.id)!) {
+      const c = contribution(initialRating, effRating.get(o.oppId) ?? 0, o.iWon)
       sumContribution += c
       sumAbs += Math.abs(c)
     }
@@ -245,8 +279,8 @@ export function calculateRatings(
         loserName: byId.get(m.loserId)!.name,
         winnerRatingBefore: roundRating(wRef),
         loserRatingBefore: roundRating(lRef),
-        winnerPoints: contribution(wRef, inputRating.get(m.loserId) ?? 0, true),
-        loserPoints: contribution(lRef, inputRating.get(m.winnerId) ?? 0, false),
+        winnerPoints: contribution(wRef, lRef, true),
+        loserPoints: contribution(lRef, wRef, false),
       }
     })
 
