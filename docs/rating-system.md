@@ -116,25 +116,45 @@ player starts at weight 0.
 
 ```
 delta       = factor × Σcontribution × 10 / min(40, closingWeight)
-ratingAfter = max(0, initialRating + delta)
+ratingAfter = max(0, closingBase + delta)
 ```
 
+- `closingBase` is **the player's rating for a rated player, but `0` for a
+  provisional player** (see §7) — a новачок's rating is built up from 0, not from
+  their опорний.
 - `delta = 0` if the player is brand-new and earned no weight.
 - The `min(40, weight)` divisor is why **newcomers swing hard** (small weight →
   big moves) while **established players move slowly** (weight capped at 40).
 - `factor` is the tournament's weighting coefficient (usually 1).
+- The displayed **change** is `ratingAfter − опорний`, matching how ligas shows
+  it (e.g. a новачок with опорний 1.1 who nets 0 points shows "rating 0 ↓1.1").
 
 ---
 
 ## 7. Provisional ("новачок") players
 
-- Start at their опорний, weight 0.
-- ligas holds a provisional player's **confirmed** rating near 0 until they cross
-  a confirmation threshold — their stored `final` is reset to ~0 each event while
-  weight accumulates.
-- **This calculator shows the earned опорний instead**, which is the more useful
-  number for a predictor. Consequently our `ratingAfter` for a still-provisional
-  player will not equal ligas' eventually-stored 0.
+A provisional player arrives **unrated** (rating ≤ 0) **or with weight 0**. (The
+weight check matters: for an already-processed tournament ligas stores the
+новачок's опорний as their `initial` rating — so rating > 0 — but still with
+weight 0. They are provisional, not rated.)
+
+The key rule: **a provisional player's rating is built up from 0, not from their
+опорний.** The опорний is only the *yardstick* used to price each match (the
+`myRating` in §2) and the value opponents see (§4) — it is **not** a credited
+rating. So:
+
+```
+ratingAfter = max(0, 0 + delta)      // provisional: base 0
+```
+
+- **Net ≤ 0 points → final 0.** Example: Руденко in `knajuc` earns +3 (beat a 5.7
+  player) and loses −2 / −1, netting **0** → `max(0, 0) = 0`, even though her
+  опорний is 1.1. This is exact and matches ligas.
+- **Net positive → a positive (estimated) rating.** новачки who post a net-positive
+  result eventually "confirm", but ligas assigns the confirmed number via a
+  **multi-tournament aggregate** that a single-event calculator can't reproduce
+  (e.g. Красношлик: опорний 0.6, ligas final 4.9, our estimate 5.7). So a positive
+  provisional `ratingAfter` here is an approximation, not an exact match.
 
 ---
 
@@ -163,8 +183,14 @@ stored опорний / final / weight:
 
 - **Rated players: reproduced exactly** (опорний + final + weight) across
   `laij93` and `1xquom`.
-- **Provisional players: опорний + weight reproduced exactly**; only their
-  *final* differs, by the documented federation provisional-correction above.
+- **Provisional players: опорний + weight reproduced exactly**, and the **final
+  too whenever they net ≤ 0 points** (built from 0). Only the *net-positive*
+  "confirming" provisional finals differ, by the multi-tournament aggregate
+  correction described in §7.
+
+Results are ordered by **rating after**, then by **rating before (опорний)** as a
+tiebreaker — so provisional players who all close at 0 are still ranked by what
+they earned in the tournament.
 
 ---
 
