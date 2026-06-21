@@ -202,12 +202,15 @@ export function calculateRatings(
     losses.set(m.loserId, (losses.get(m.loserId) ?? 0) + 1)
   }
 
-  // A player is provisional when they arrive unrated (rating <= 0). Rated
-  // players keep their rating; provisional players are anchored to the опорний
-  // derived from this tournament. Since an опорний depends on opponents'
+  // A player is provisional when they arrive unrated (rating <= 0) OR carry no
+  // weight (weight <= 0). The weight check matters for an already-processed
+  // tournament: ligas stores a новачок's опорний as their `initial` rating (so
+  // rating > 0) but still with weight 0 — they are provisional, not rated.
+  // Rated players keep their rating; provisional players are anchored to the
+  // опорний derived from this tournament. Since an опорний depends on opponents'
   // ratings — and some opponents are themselves provisional — resolve everyone
   // together by iterating to a fixed point (rated players are stable anchors).
-  const isProvisional = (p: PlayerInput) => p.rating <= 0
+  const isProvisional = (p: PlayerInput) => p.rating <= 0 || p.weight <= 0
   const effRating = new Map<string, number>()
   const effWeight = new Map<string, number>()
   for (const p of players) {
@@ -247,7 +250,16 @@ export function calculateRatings(
     if (Math.round(closingWeight) !== 0) {
       delta = (factor * sumContribution * 10) / Math.min(40, closingWeight)
     }
-    const ratingAfter = Math.max(0, initialRating + delta)
+    // A provisional player's rating is built up from 0 — their опорний is only
+    // the yardstick used to price their matches, NOT a credited rating. So their
+    // closing rating is max(0, delta), not опорний + delta. (Verified against
+    // processed knajuc: Руденко's опорний is 1.1 but she nets 0 points, so ligas
+    // stores her final as 0, not 1.1.) Rated players close from their rating.
+    // NB: for провісional players who post a net-positive result and eventually
+    // "confirm", ligas applies a multi-tournament aggregate we can't reproduce
+    // from one event — so a positive provisional final here is an estimate.
+    const closingBase = isProvisional(p) ? 0 : initialRating
+    const ratingAfter = Math.max(0, closingBase + delta)
 
     return {
       id: p.id,
@@ -255,6 +267,9 @@ export function calculateRatings(
       provisional: p.provisional,
       ratingBefore: roundRating(initialRating),
       ratingAfter: roundRating(ratingAfter),
+      // Change is measured against the опорний, exactly as ligas displays it
+      // (опорний → final). For Руденко that's 0 − 1.1 = −1.1, matching ligas'
+      // "Рейтинг 0 ↓1.1".
       change: roundRating(ratingAfter - initialRating),
       weightBefore: initialWeight,
       weightAfter: closingWeight,
@@ -284,7 +299,12 @@ export function calculateRatings(
       }
     })
 
-  playerResults.sort((a, b) => b.ratingAfter - a.ratingAfter)
+  // Order by rating after, then by rating before (опорний) as a tiebreaker —
+  // so provisional players who all close at 0 are still ranked by what they
+  // earned this tournament.
+  playerResults.sort(
+    (a, b) => b.ratingAfter - a.ratingAfter || b.ratingBefore - a.ratingBefore,
+  )
 
   return { players: playerResults, matches: matchContributions, factor }
 }
