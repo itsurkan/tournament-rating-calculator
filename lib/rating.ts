@@ -260,17 +260,22 @@ export function calculateRatings(
     // from one event — so a positive provisional final here is an estimate.
     const closingBase = isProvisional(p) ? 0 : initialRating
     const ratingAfter = Math.max(0, closingBase + delta)
+    const before = roundRating(initialRating)
+    const after = roundRating(ratingAfter)
 
     return {
       id: p.id,
       name: p.name,
       provisional: p.provisional,
-      ratingBefore: roundRating(initialRating),
-      ratingAfter: roundRating(ratingAfter),
+      ratingBefore: before,
+      ratingAfter: after,
       // Change is measured against the опорний, exactly as ligas displays it
-      // (опорний → final). For Руденко that's 0 − 1.1 = −1.1, matching ligas'
-      // "Рейтинг 0 ↓1.1".
-      change: roundRating(ratingAfter - initialRating),
+      // (опорний → final, e.g. Руденко 0 − 1.1 = −1.1). Derive it from the
+      // ROUNDED before/after so the row is always internally consistent
+      // (before + change === after). Computing it from the unrounded values can
+      // disagree by 0.1 — e.g. 1.8 + delta 1.25 = 3.05: the after rounds up to
+      // 3.1, but the unrounded 3.05 − 1.8 rounds down to 1.2 instead of 1.3.
+      change: roundRating(after - before),
       weightBefore: initialWeight,
       weightAfter: closingWeight,
       wins: wins.get(p.id) ?? 0,
