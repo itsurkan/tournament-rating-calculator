@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Loader2, MapPin, Calendar, Trophy, ChevronDown } from "lucide-react"
+import { VisitorsPanel } from "@/components/visitors-panel"
 
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
@@ -495,6 +496,7 @@ export default function Page() {
           @Itsurkan
         </a>
       </footer>
+        <VisitorsPanel />
       </main>
     </div>
   )
