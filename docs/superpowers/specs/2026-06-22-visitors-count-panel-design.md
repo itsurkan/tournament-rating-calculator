@@ -30,7 +30,8 @@ counter model, rebuilt cleanly on the current `main`.
 ## Storage Model
 
 On each page load the API increments four calendar-period counters plus a
-lifetime total, in a single Redis pipeline (atomic, O(1) writes):
+lifetime total, in a single Redis pipeline (O(1) writes — each `INCR` is
+individually atomic; the pipeline batches round-trips but is not a transaction):
 
 - `visits:day:<YYYY-MM-DD>` — e.g. `visits:day:2026-06-22`
 - `visits:week:<YYYY-Www>` — ISO week, e.g. `visits:week:2026-W26`

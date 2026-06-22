@@ -43,7 +43,10 @@ export function VisitorsPanel() {
   ]
 
   return (
-    <footer className="mt-10 border-t border-border pt-6 text-muted-foreground">
+    <section
+      aria-label={t("visits.heading")}
+      className="mt-10 border-t border-border pt-6 text-muted-foreground"
+    >
       <div className="mb-3 flex items-center gap-2 text-sm font-medium">
         <Users className="h-4 w-4" aria-hidden />
         <span>{t("visits.heading")}</span>
@@ -62,6 +65,6 @@ export function VisitorsPanel() {
           </div>
         ))}
       </dl>
-    </footer>
+    </section>
   )
 }
