@@ -266,7 +266,13 @@ export function calculateRatings(
     return {
       id: p.id,
       name: p.name,
-      provisional: p.provisional,
+      // Badge новачок by how the player was actually treated this tournament,
+      // not the raw ligas flag. A player who arrives with a stored опорний
+      // (rating > 0) but no weight is still provisional (isProvisional → weight
+      // <= 0): they get the -2 handicap and are anchored to the опорній, so the
+      // UI must show the Новачок badge for them too. (p.provisional alone is
+      // false here because ligas has a ranking row, so the badge never showed.)
+      provisional: isProvisional(p),
       ratingBefore: before,
       ratingAfter: after,
       // Change is measured against the опорний, exactly as ligas displays it
