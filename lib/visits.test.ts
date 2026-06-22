@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { periodKeys } from "@/lib/visits"
+import { periodKeys, recordVisit } from "@/lib/visits"
 
 describe("periodKeys", () => {
   it("derives UTC calendar keys with zero-padding", () => {
@@ -25,5 +25,28 @@ describe("periodKeys", () => {
     expect(periodKeys(new Date("2021-01-01T12:00:00Z")).week).toBe(
       "visits:week:2020-W53",
     )
+  })
+})
+
+describe("recordVisit", () => {
+  it("returns null when no Redis env is configured", async () => {
+    const prev = {
+      a: process.env.KV_REST_API_URL,
+      b: process.env.KV_REST_API_TOKEN,
+      c: process.env.UPSTASH_REDIS_REST_URL,
+      d: process.env.UPSTASH_REDIS_REST_TOKEN,
+    }
+    delete process.env.KV_REST_API_URL
+    delete process.env.KV_REST_API_TOKEN
+    delete process.env.UPSTASH_REDIS_REST_URL
+    delete process.env.UPSTASH_REDIS_REST_TOKEN
+    try {
+      expect(await recordVisit(new Date())).toBeNull()
+    } finally {
+      if (prev.a) process.env.KV_REST_API_URL = prev.a
+      if (prev.b) process.env.KV_REST_API_TOKEN = prev.b
+      if (prev.c) process.env.UPSTASH_REDIS_REST_URL = prev.c
+      if (prev.d) process.env.UPSTASH_REDIS_REST_TOKEN = prev.d
+    }
   })
 })

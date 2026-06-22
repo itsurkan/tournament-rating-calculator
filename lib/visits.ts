@@ -1,4 +1,5 @@
 // Server-only visit counting. Do NOT import from a client component.
+import { Redis } from "@upstash/redis"
 export type VisitCounts = {
   day: number
   week: number
@@ -21,6 +22,34 @@ function isoWeek(date: Date): { year: number; week: number } {
   const yearStart = new Date(Date.UTC(year, 0, 1))
   const week = Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
   return { year, week }
+}
+
+export function getRedis(): Redis | null {
+  const url =
+    process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
+  const token =
+    process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
+  if (!url || !token) return null
+  return new Redis({ url, token })
+}
+
+export async function recordVisit(date: Date): Promise<VisitCounts | null> {
+  const redis = getRedis()
+  if (!redis) return null
+  try {
+    const k = periodKeys(date)
+    const pipe = redis.pipeline()
+    pipe.incr(k.day)
+    pipe.incr(k.week)
+    pipe.incr(k.month)
+    pipe.incr(k.year)
+    pipe.incr(k.total)
+    const [day, week, month, year] = (await pipe.exec()) as number[]
+    return { day, week, month, year }
+  } catch (err) {
+    console.error("recordVisit failed", err)
+    return null
+  }
 }
 
 export function periodKeys(date: Date) {
