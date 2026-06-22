@@ -65,6 +65,11 @@ const en = {
   "error.no_tournament_id": "Could not find a tournament id in that URL.",
   "error.fetch_failed": "Failed to load this tournament from ligas.io.",
   "error.unknown": "Something went wrong.",
+  "visits.heading": "Visits",
+  "visits.today": "Today",
+  "visits.week": "This week",
+  "visits.month": "This month",
+  "visits.year": "This year",
 } as const
 
 export type TKey = keyof typeof en
@@ -120,6 +125,11 @@ const uk: Record<TKey, string> = {
     "Не вдалося знайти ідентифікатор турніру в цьому посиланні.",
   "error.fetch_failed": "Не вдалося завантажити цей турнір з ligas.io.",
   "error.unknown": "Щось пішло не так.",
+  "visits.heading": "Відвідування",
+  "visits.today": "Сьогодні",
+  "visits.week": "Цей тиждень",
+  "visits.month": "Цей місяць",
+  "visits.year": "Цей рік",
 }
 
 const dict: Record<Locale, Record<TKey, string>> = { uk, en }
