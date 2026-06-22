@@ -16,6 +16,17 @@ import { Loader2, MapPin, Calendar, Trophy, ChevronDown } from "lucide-react"
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
 
+// Reduce any accepted input (a full ligas URL or a bare id) to the canonical
+// short tournament id. The API caches the whole response per request URL, so a
+// bare id and a full URL would be two separate cache keys for the same
+// tournament — and one can go stale (e.g. cached before the event was
+// processed). Always fetching by the bare id keeps a single, consistent cache
+// entry whether the page is opened via ?t=<id> or recalculated from the URL box.
+function tournamentIdFromInput(input: string): string {
+  const match = input.match(/tournament\/([a-z0-9]+)/i)
+  return match ? match[1] : input.trim()
+}
+
 // Recently viewed tournaments shown in the left panel.
 const RECENTS_KEY = "recentTournaments"
 const MAX_RECENTS = 20
@@ -82,7 +93,7 @@ export default function Page() {
   }
 
   async function runCalculate(input: string) {
-    const target = input.trim()
+    const target = tournamentIdFromInput(input.trim())
     if (!target) return
     setErrorKey(null)
     setLoading(true)
