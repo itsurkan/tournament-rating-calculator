@@ -496,7 +496,7 @@ export default function Page() {
           @Itsurkan
         </a>
       </footer>
-        <VisitorsPanel />
+      <VisitorsPanel />
       </main>
     </div>
   )
