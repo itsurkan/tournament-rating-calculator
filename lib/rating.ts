@@ -31,15 +31,16 @@
 //   2. contestWeight = min(20, sum of |contribution|)          (games played, capped)
 //      closingWeight = initialWeight + contestWeight
 //
-//   3. ratingDelta = factor * sum(contribution) * 10 / min(40, closingWeight)
-//      (0 if the player is brand new and earned no weight)
-//      ratingAfter  = max(0, initialRating + ratingDelta)
+//   3. RATED:       ratingAfter = max(0, rating + factor * Σcontribution * 10 / min(40, weight))
+//      PROVISIONAL: ratingAfter = max(0, опорний + factor * (Σcontribution - 2) * 10 / min(40, weight))
+//                   (the "- 2" is the новачок two-game handicap; 0 if no weight)
 //
 // The min(40, weight) divisor is why established players (high weight) move
 // slowly while newcomers swing hard.
 //
-// Provisional players (no rating yet) start at 0. Their effective starting
-// rating is the "опорний" (base) rating derived from whom they beat/lost to.
+// Provisional players (no rating yet) are anchored to the "опорний" (base)
+// rating derived from whom they beat/lost to, then charged a fixed 2-game
+// handicap — so a net-positive newcomer can still finish below their опорний.
 //
 // Verified against ligas tournament 1xquom: reproduces every rated player's
 // post-tournament rating exactly.
@@ -246,27 +247,38 @@ export function calculateRatings(
     const contestWeight = Math.min(20, sumAbs)
     const closingWeight = initialWeight + contestWeight
 
-    let delta = 0
-    if (Math.round(closingWeight) !== 0) {
-      delta = (factor * sumContribution * 10) / Math.min(40, closingWeight)
+    // RATED players move by the standard delta from their rating. PROVISIONAL
+    // (новачок) players build from their опорний but are charged a fixed 2-game
+    // handicap (the "- 2"): a new player's first results are treated as if two
+    // of their games were losses. This is why a net-positive provisional result
+    // can still land below the опорний, and the soft clamp at 0 makes a weak
+    // result collapse to 0 (subsuming the "Σc ≤ 0 → 0" case) while preserving the
+    // rare Σc < 0 / high-опорний rows that ligas still keeps positive.
+    //
+    // Derived & verified against ligas: reproduces every provisional final exactly
+    // across 14 processed tournaments (e.g. Умрілов 9ktbaw опорний 5.4, Σc 3,
+    // weight 7 → 6.8; Руденко knajuc 1.1, Σc 0 → 0).
+    let ratingAfter: number
+    if (Math.round(closingWeight) === 0) {
+      ratingAfter = 0 // a provisional player with no weight-bearing games stays 0
+    } else if (isProvisional(p)) {
+      const adj = sumContribution - 2
+      ratingAfter = Math.max(0, initialRating + (factor * adj * 10) / Math.min(40, closingWeight))
+    } else {
+      ratingAfter = Math.max(0, initialRating + (factor * sumContribution * 10) / Math.min(40, closingWeight))
     }
-    // A provisional player's rating is built up from 0 — their опорний is only
-    // the yardstick used to price their matches, NOT a credited rating. So their
-    // closing rating is max(0, delta), not опорний + delta. (Verified against
-    // processed knajuc: Руденко's опорний is 1.1 but she nets 0 points, so ligas
-    // stores her final as 0, not 1.1.) Rated players close from their rating.
-    // NB: for провісional players who post a net-positive result and eventually
-    // "confirm", ligas applies a multi-tournament aggregate we can't reproduce
-    // from one event — so a positive provisional final here is an estimate.
-    const closingBase = isProvisional(p) ? 0 : initialRating
-    const ratingAfter = Math.max(0, closingBase + delta)
     const before = roundRating(initialRating)
     const after = roundRating(ratingAfter)
 
     return {
       id: p.id,
       name: p.name,
-      provisional: p.provisional,
+      // Mark as новачок based on how the player was actually treated this
+      // tournament, not the raw ligas flag. A player who arrives with a stored
+      // опорний (rating > 0) but no weight is still provisional (isProvisional
+      // → weight <= 0): they get the -2 handicap and are anchored to the
+      // опорній, so the UI must show the Новачок badge for them too.
+      provisional: isProvisional(p),
       ratingBefore: before,
       ratingAfter: after,
       // Change is measured against the опорний, exactly as ligas displays it
