@@ -485,6 +485,7 @@ export default function Page() {
         </section>
       )}
 
+      <VisitorsPanel />
       <footer className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground">
         {t("footer.createdBy")} &middot;{" "}
         <a
@@ -496,7 +497,6 @@ export default function Page() {
           @Itsurkan
         </a>
       </footer>
-      <VisitorsPanel />
       </main>
     </div>
   )
