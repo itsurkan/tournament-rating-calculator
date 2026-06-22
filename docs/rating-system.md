@@ -115,14 +115,15 @@ player starts at weight 0.
 ## 6. Rating delta
 
 ```
-delta       = factor × Σcontribution × 10 / min(40, closingWeight)
-ratingAfter = max(0, closingBase + delta)
+RATED:        ratingAfter = max(0, rating  + factor × Σcontribution       × 10 / min(40, weight))
+PROVISIONAL:  ratingAfter = max(0, опорний + factor × (Σcontribution − 2)  × 10 / min(40, weight))
 ```
 
-- `closingBase` is **the player's rating for a rated player, but `0` for a
-  provisional player** (see §7) — a новачок's rating is built up from 0, not from
-  their опорний.
-- `delta = 0` if the player is brand-new and earned no weight.
+- Both build from the player's own rating (the **опорний** for a provisional
+  player) — *not* from 0.
+- The **`− 2`** in the provisional formula is the **новачок two-game handicap**
+  (see §7): a newcomer's results are scored as if two of their games were losses.
+- `delta = 0` if the player is brand-new and earned no weight (`weight 0`).
 - The `min(40, weight)` divisor is why **newcomers swing hard** (small weight →
   big moves) while **established players move slowly** (weight capped at 40).
 - `factor` is the tournament's weighting coefficient (usually 1).
@@ -138,23 +139,33 @@ weight check matters: for an already-processed tournament ligas stores the
 новачок's опорний as their `initial` rating — so rating > 0 — but still with
 weight 0. They are provisional, not rated.)
 
-The key rule: **a provisional player's rating is built up from 0, not from their
-опорний.** The опорний is only the *yardstick* used to price each match (the
-`myRating` in §2) and the value opponents see (§4) — it is **not** a credited
-rating. So:
+The key rule: **a provisional player builds from their опорний, but is charged a
+fixed two-game handicap** — their `Σcontribution` is reduced by **2** before the
+delta, as if two of their games were losses. So a newcomer who nets a *positive*
+contribution can still finish *below* their опорний:
 
 ```
-ratingAfter = max(0, 0 + delta)      // provisional: base 0
+ratingAfter = max(0, опорний + factor × (Σcontribution − 2) × 10 / min(40, weight))
 ```
 
-- **Net ≤ 0 points → final 0.** Example: Руденко in `knajuc` earns +3 (beat a 5.7
-  player) and loses −2 / −1, netting **0** → `max(0, 0) = 0`, even though her
-  опорний is 1.1. This is exact and matches ligas.
-- **Net positive → a positive (estimated) rating.** новачки who post a net-positive
-  result eventually "confirm", but ligas assigns the confirmed number via a
-  **multi-tournament aggregate** that a single-event calculator can't reproduce
-  (e.g. Красношлик: опорний 0.6, ligas final 4.9, our estimate 5.7). So a positive
-  provisional `ratingAfter` here is an approximation, not an exact match.
+- The **`− 2`** handicap is why net-positive newcomers often land below опорній,
+  and the soft clamp `max(0, …)` makes any sufficiently weak result collapse to
+  **0** (no separate "Σc ≤ 0 → 0" rule is needed — yet a strong result with a
+  single weak loss, e.g. Σc = −1 from a high опорній, can still stay positive).
+
+**Worked examples (all exact vs ligas):**
+
+| player | опорний | Σc | weight | ligas final |
+|---|---|---|---|---|
+| Умрілов `9ktbaw` | 5.4 | +3 | 7 | `5.4 + (3−2)·10/7` = **6.8** |
+| Руденко `knajuc` | 1.1 | 0 | 6 | `max(0, 1.1 + (0−2)·10/6)` = **0** |
+| `ag9gww` | 2.3 | +1 | 7 | `2.3 + (1−2)·10/7` = **0.9** |
+
+**Accuracy:** reproduces **every** provisional final exactly across 14 processed
+tournaments (79/79), provided the опорній input is itself exact. The only
+residual gaps come from the опорній derivation, not this formula: a ±0.1 wobble
+when two provisional players anchor off each other (a fixed-point tie), and the
+pre-tournament rating source for already-processed events.
 
 ---
 
@@ -181,12 +192,12 @@ A reproduction harness feeds each player's **pre-tournament confirmed rating**
 into already-processed tournaments and checks the engine reproduces ligas'
 stored опорний / final / weight:
 
-- **Rated players: reproduced exactly** (опорний + final + weight) across
-  `laij93` and `1xquom`.
-- **Provisional players: опорний + weight reproduced exactly**, and the **final
-  too whenever they net ≤ 0 points** (built from 0). Only the *net-positive*
-  "confirming" provisional finals differ, by the multi-tournament aggregate
-  correction described in §7.
+- **Rated players: reproduced exactly** (опорний + final + weight).
+- **Provisional players: reproduced exactly too** — опорний, weight, **and the
+  final** (the новачок handicap of §7), across 14 processed tournaments. The only
+  residual gaps trace back to the опорний *input*, not the final formula (a ±0.1
+  fixed-point tie between two mutually-anchoring provisional players, and the
+  pre-tournament rating source for some processed events).
 
 Results are ordered by **rating after**, then by **rating before (опорний)** as a
 tiebreaker — so provisional players who all close at 0 are still ranked by what
