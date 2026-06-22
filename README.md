@@ -31,3 +31,15 @@ To learn more, take a look at the following resources:
 - [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
 - [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 - [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+
+## Visit counter (Vercel KV)
+
+The home page shows visit counts (today / week / month / year) backed by Vercel KV
+(Upstash Redis). To enable in production:
+
+1. Add the Upstash KV integration to the Vercel project.
+2. `vercel env pull .env.local` to get `KV_REST_API_URL` / `KV_REST_API_TOKEN`
+   (or `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`).
+3. Deploy. Without these env vars the panel quietly shows `—`.
+
+Counts are total page loads per UTC calendar period (no unique-visitor dedup).
