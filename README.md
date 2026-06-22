@@ -32,14 +32,17 @@ To learn more, take a look at the following resources:
 - [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
 - [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
 
-## Visit counter (Vercel KV)
+## Visit counter
 
-The home page shows visit counts (today / week / month / year) backed by Vercel KV
-(Upstash Redis). To enable in production:
+The home page shows visit counts (today / week / month / year). Counts are kept
+in a free, no-signup hosted counter service ([abacus](https://abacus.jasoncameron.dev)):
+each page load calls our `/api/visits` route, which increments one counter key per
+calendar period (UTC) and returns the new values. **No database or env vars are
+required** — it works out of the box on Vercel.
 
-1. Add the Upstash KV integration to the Vercel project.
-2. `vercel env pull .env.local` to get `KV_REST_API_URL` / `KV_REST_API_TOKEN`
-   (or `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`).
-3. Deploy. Without these env vars the panel quietly shows `—`.
+- Counts are total page loads per UTC calendar period (no unique-visitor dedup).
+- If the counter service is unreachable, the panel quietly shows `—`.
+- Optional: set `VISITS_NAMESPACE` to change the counter namespace (e.g. to keep
+  preview/staging counts separate from production). Defaults to a built-in name.
 
 Counts are total page loads per UTC calendar period (no unique-visitor dedup).

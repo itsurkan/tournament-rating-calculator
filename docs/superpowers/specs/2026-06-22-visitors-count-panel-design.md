@@ -12,9 +12,15 @@ starts and deploys.
 
 ## Decisions
 
+> **Update (2026-06-22):** storage switched from Vercel KV to a free, no-signup
+> hosted counter service ([abacus](https://abacus.jasoncameron.dev)) to avoid any
+> provisioning/env-var setup. Each calendar period is one counter key; the
+> `/api/visits` route increments it server-side. The route/component contract and
+> calendar-period model below are unchanged.
+
 | Question | Decision |
 |----------|----------|
-| Storage | Vercel KV / Upstash Redis (`@upstash/redis` client) |
+| Storage | Hosted counter service (abacus) — one key per period, no DB, no env vars |
 | Visit metric | Every page load (no unique-visitor dedup) |
 | Period definition | Calendar periods — today / this week / this month / this year |
 | Time zone for bucketing | UTC (Vercel server time) |

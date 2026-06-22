@@ -1,10 +1,23 @@
 // Server-only visit counting. Do NOT import from a client component.
-import { Redis } from "@upstash/redis"
+//
+// Counts are stored in a free, no-signup hosted counter service
+// (https://abacus.jasoncameron.dev): a single GET to /hit/<namespace>/<key>
+// atomically increments that key and returns the new value. Each calendar
+// period (day/week/month/year) is its own key, so no database to provision and
+// no env vars required. The namespace can be overridden with VISITS_NAMESPACE.
 export type VisitCounts = {
-  day: number
-  week: number
-  month: number
-  year: number
+  day: number | null
+  week: number | null
+  month: number | null
+  year: number | null
+}
+
+const COUNTER_BASE = "https://abacus.jasoncameron.dev/hit"
+const DEFAULT_NAMESPACE = "tournament-rating-calc-itsurkan"
+const REQUEST_TIMEOUT_MS = 5000
+
+function namespace(): string {
+  return process.env.VISITS_NAMESPACE || DEFAULT_NAMESPACE
 }
 
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -24,44 +37,47 @@ function isoWeek(date: Date): { year: number; week: number } {
   return { year, week }
 }
 
-export function getRedis(): Redis | null {
-  const url =
-    process.env.KV_REST_API_URL ?? process.env.UPSTASH_REDIS_REST_URL
-  const token =
-    process.env.KV_REST_API_TOKEN ?? process.env.UPSTASH_REDIS_REST_TOKEN
-  if (!url || !token) return null
-  return new Redis({ url, token })
-}
-
-export async function recordVisit(date: Date): Promise<VisitCounts | null> {
-  const redis = getRedis()
-  if (!redis) return null
-  try {
-    const k = periodKeys(date)
-    const pipe = redis.pipeline()
-    pipe.incr(k.day)
-    pipe.incr(k.week)
-    pipe.incr(k.month)
-    pipe.incr(k.year)
-    pipe.incr(k.total)
-    const [day, week, month, year] = (await pipe.exec()) as number[]
-    return { day, week, month, year }
-  } catch (err) {
-    console.error("recordVisit failed", err)
-    return null
-  }
-}
-
+// Calendar-period counter keys in UTC. Keys are plain hyphenated strings so they
+// are safe as a URL path segment on the counter service.
 export function periodKeys(date: Date) {
   const y = date.getUTCFullYear()
   const m = pad(date.getUTCMonth() + 1)
   const d = pad(date.getUTCDate())
   const { year: wy, week } = isoWeek(date)
   return {
-    day: `visits:day:${y}-${m}-${d}`,
-    week: `visits:week:${wy}-W${pad(week)}`,
-    month: `visits:month:${y}-${m}`,
-    year: `visits:year:${y}`,
-    total: `visits:total`,
+    day: `day-${y}-${m}-${d}`,
+    week: `week-${wy}-w${pad(week)}`,
+    month: `month-${y}-${m}`,
+    year: `year-${y}`,
   }
+}
+
+// Increment one counter key and return its new value, or null on any failure
+// (network error, non-2xx, unexpected body) — a missing count is never an error.
+async function bump(key: string): Promise<number | null> {
+  try {
+    const res = await fetch(`${COUNTER_BASE}/${namespace()}/${key}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    })
+    if (!res.ok) return null
+    const data: unknown = await res.json()
+    const value = (data as { value?: unknown })?.value
+    return typeof value === "number" ? value : null
+  } catch {
+    return null
+  }
+}
+
+// Increment all four period counters for `date` (in parallel) and return the new
+// values. Any period that fails to record comes back as null (panel shows "—").
+export async function recordVisit(date: Date): Promise<VisitCounts> {
+  const k = periodKeys(date)
+  const [day, week, month, year] = await Promise.all([
+    bump(k.day),
+    bump(k.week),
+    bump(k.month),
+    bump(k.year),
+  ])
+  return { day, week, month, year }
 }
