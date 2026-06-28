@@ -17,9 +17,12 @@ function parseTournamentId(input: string): string | null {
 async function getJson(url: string) {
   const res = await fetch(url, {
     headers: { accept: "application/json" },
-    // Cache each upstream ligas.io response for 15 min in Vercel's Data Cache,
-    // so even a CDN miss doesn't re-hit ligas for every player.
-    next: { revalidate: 900 },
+    // Always fetch ligas fresh when the route actually runs. The 15-min CDN
+    // cache on the computed result (see GET below) is the single staleness gate
+    // and already throttles route execution to ~once per 15 min per tournament,
+    // so this never hammers ligas — and it guarantees the data is never stacked
+    // behind a second cache layer (which could push it past 15 min old).
+    cache: "no-store",
   })
   if (!res.ok) throw new Error(`ligas ${res.status} for ${url}`)
   return res.json()
@@ -257,10 +260,11 @@ export async function GET(req: NextRequest) {
         matches,
       },
       {
-        // Serve the same computed result from Vercel's edge for an hour; refresh
-        // in the background for a day after that so a reload is never blocked.
+        // Cache the computed result at Vercel's edge for 15 min, then do a
+        // blocking revalidation — never serve a stale result. This bounds how
+        // old the data can be to ~15 min, matching the upstream ligas cache.
         headers: {
-          "cache-control": "public, s-maxage=3600, stale-while-revalidate=86400",
+          "cache-control": "public, s-maxage=900, must-revalidate",
         },
       },
     )
