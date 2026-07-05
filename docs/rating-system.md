@@ -109,6 +109,13 @@ player starts at weight 0.
 > decays it over time. This engine does not model that decay, so for an
 > *unprocessed* tournament the magnitude of changes can be larger than ligas'
 > eventual official numbers.
+>
+> Concrete case (`4vfczq`, Квасніцький): the live prediction used his previous
+> tournament's `finalWeight` 11 → delta 10/16 → **+0.6** (5.9 → 6.5). Ligas then
+> processed the event with a decayed `initialWeight` **10** → delta 10/15 →
+> official **+0.7** (5.9 → **6.6**). Same engine, same matches — only the weight
+> snapshot differs. Once a tournament is processed, the app switches to ligas'
+> stored `initial` values and reproduces the official result exactly.
 
 ---
 
@@ -176,6 +183,13 @@ independent facts:
 ---
 
 ## Verification
+
+Regression tests live in `lib/__tests__/` (`pnpm test` — vitest). Each fixture
+is an already-processed tournament with ligas' pre-tournament `initial` values
+as input and the stored official `final` / `finalWeight` as the expected
+output; the engine must reproduce every rated player exactly. Currently
+covered: `4vfczq` (all 5 rated players + the +0.6/+0.7 weight-decay case).
+Add a fixture per newly verified tournament.
 
 A reproduction harness feeds each player's **pre-tournament confirmed rating**
 into already-processed tournaments and checks the engine reproduces ligas'
