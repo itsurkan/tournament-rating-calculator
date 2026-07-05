@@ -49,6 +49,32 @@ export function roundRating(n: number): number {
   return Math.round(n * 10) / 10
 }
 
+/**
+ * Ligas decays a rated player's weight once at every calendar-month boundary
+ * (weights never change between tournaments within the same month). The rule
+ * was reverse-engineered from 195 consecutive history pairs across 16 players
+ * (see research/weight-decay/FINDINGS.md):
+ *
+ *   w' = round(min(56, w − w² / 225))
+ *
+ * 90% exact matches, MAE 0.18 on all 51 cross-boundary pairs; reproduces e.g.
+ * 11→10 (Квасніцький 4vfczq), 60→44 (Цуркан), 100→56 / 91→54 (Джулай),
+ * 36→(2 boundaries)→26 (Возний). Misses are ≤2 at the extremes (w≲9, w≳130).
+ * Fresh light weight barely decays (~9%), old heavy weight loses 25–45%.
+ *
+ * Apply when predicting an UNPROCESSED tournament from a player's latest
+ * history entry. Not needed for processed tournaments (ligas' stored initial
+ * already includes it). Provisional resets (final ≤ 0 → weight 0) are a
+ * separate rule handled by the engine.
+ */
+export function decayWeight(weight: number, monthBoundaries: number): number {
+  let w = weight
+  for (let i = 0; i < monthBoundaries; i++) {
+    w = Math.round(Math.min(56, w - (w * w) / 225))
+  }
+  return w
+}
+
 export type PlayerInput = {
   id: string
   name: string

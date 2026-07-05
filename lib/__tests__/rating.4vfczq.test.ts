@@ -8,7 +8,7 @@
 // 10/15 ≈ 0.67 instead of 10/16 ≈ 0.63. Both are computed by the same engine —
 // the inputs differ, not the algorithm. See the companion test below.
 import { describe, expect, it } from "vitest"
-import { calculateRatings } from "../rating"
+import { calculateRatings, decayWeight } from "../rating"
 import { matches, officialFinals, players } from "./fixtures/4vfczq"
 
 describe("4vfczq (processed): reproduces ligas official results", () => {
@@ -44,7 +44,7 @@ describe("4vfczq (pre-processing prediction): weight 11 explains the old +0.6", 
   // the final/finalWeight of his previous tournament 7qbsdt: 5.9 / weight 11.
   // Ligas later decayed that weight to 10 before processing. Same engine,
   // different weight snapshot → +0.6 then, +0.7 now. Not a calculation bug.
-  it("with previous finalWeight 11 the prediction is 6.5 (+0.6)", () => {
+  it("with previous finalWeight 11 (undecayed) the prediction is 6.5 (+0.6)", () => {
     const predicted = players.map((p) =>
       p.id === "bjolssi" ? { ...p, weight: 11 } : p,
     )
@@ -52,5 +52,16 @@ describe("4vfczq (pre-processing prediction): weight 11 explains the old +0.6", 
     const k = result.players.find((p) => p.id === "bjolssi")!
     expect(k.ratingAfter).toBe(6.5)
     expect(k.change).toBe(0.6)
+  })
+
+  it("with decayWeight applied (11 → 10 across the July boundary) the live prediction already matches the official +0.7", () => {
+    // 7qbsdt is dated 2026-06-21, 4vfczq 2026-07-03 → 1 month boundary.
+    const predicted = players.map((p) =>
+      p.id === "bjolssi" ? { ...p, weight: decayWeight(11, 1) } : p,
+    )
+    const result = calculateRatings(predicted, matches, 1)
+    const k = result.players.find((p) => p.id === "bjolssi")!
+    expect(k.ratingAfter).toBe(6.6)
+    expect(k.change).toBe(0.7)
   })
 })

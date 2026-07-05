@@ -1,6 +1,19 @@
 import { type NextRequest, NextResponse } from "next/server"
+import { decayWeight } from "@/lib/rating"
 
 const LIGAS = "https://ligas.io/api"
+
+// Calendar-month boundaries crossed between two ISO dates (UTC). Ligas decays
+// weight once per boundary — see decayWeight in lib/rating.ts.
+function monthBoundariesBetween(fromIso?: string | null, toIso?: string | null): number {
+  if (!fromIso || !toIso) return 0
+  const a = new Date(fromIso)
+  const b = new Date(toIso)
+  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0
+  const diff =
+    (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth())
+  return Math.max(0, diff)
+}
 
 // Extract the short tournament id from any ligas.io tournament URL or a raw id.
 // e.g. https://ligas.io/tournament/2el6ef/results -> "2el6ef"
@@ -72,12 +85,17 @@ type Snapshot = {
 //     it — use the PRE-tournament values it actually used, so we can reproduce
 //     ligas' official result instead of double-counting the event.
 //   - Otherwise the tournament is unprocessed: use the player's CURRENT rating,
-//     i.e. the `final`/`finalWeight` of their most recent history entry.
+//     i.e. the `final`/`finalWeight` of their most recent history entry — with
+//     the finalWeight DECAYED once per calendar-month boundary between that
+//     entry and the tournament date (ligas applies the same decay before
+//     processing; without it predictions drift, e.g. Квасніцький in 4vfczq
+//     predicted +0.6 with stale weight 11 vs official +0.7 with decayed 10).
 async function readSnapshot(
   alias: string,
   rankings: Ranking[],
   pid: string,
   tournamentId: string,
+  tournamentStart: string | null,
 ): Promise<Snapshot | null> {
   // Keep each entry tagged with the ranking it came from (men / women / ...).
   const entries: Array<any & { _rankingAlias: string | null }> = []
@@ -111,9 +129,13 @@ async function readSnapshot(
   for (const e of entries) {
     if (entryTime(e) >= entryTime(latest)) latest = e
   }
+  const boundaries = monthBoundariesBetween(
+    latest?.actualDate ?? latest?.date ?? null,
+    tournamentStart,
+  )
   return {
     rating: num(latest?.final),
-    weight: num(latest?.finalWeight) ?? 0,
+    weight: decayWeight(num(latest?.finalWeight) ?? 0, boundaries),
     processed: false,
     rankingAlias: latest?._rankingAlias ?? null,
   }
@@ -172,7 +194,7 @@ export async function GET(req: NextRequest) {
         try {
           const [profile, snap] = await Promise.all([
             getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`).catch(() => null),
-            readSnapshot(orgAlias, rankings, pid, id),
+            readSnapshot(orgAlias, rankings, pid, id, tournament?.start ?? null),
           ])
           // Use the snapshot (pre-tournament `initial` if processed, else the
           // latest history `final`). Fall back to the live profile ranking only
