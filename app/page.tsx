@@ -11,11 +11,43 @@ import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, MapPin, Calendar, Trophy, ChevronDown } from "lucide-react"
+import { Loader2, MapPin, Calendar, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { VisitorsPanel } from "@/components/visitors-panel"
 
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
 const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
+
+// The "Ligas · Рейтинг" brand mark — a table-tennis paddle glyph (bat + ball).
+function BrandMark() {
+  return (
+    <div className="flex items-center gap-2">
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        aria-hidden="true"
+        className="text-primary"
+      >
+        <circle cx="12" cy="12" r="8.5" stroke="currentColor" strokeWidth="1.5" />
+        <circle cx="16.2" cy="7.8" r="3.2" fill="currentColor" />
+      </svg>
+      <span className="text-sm font-bold uppercase tracking-[0.12em] text-primary">
+        Ligas · Рейтинг
+      </span>
+    </div>
+  )
+}
+
+// Up-to-two-letter avatar initials from a "Surname Firstname" display name.
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("")
+}
 
 // Reduce any accepted input (a full ligas URL or a bare id) to the canonical
 // short tournament id. The API caches the whole response per request URL, so a
@@ -227,20 +259,26 @@ export default function Page() {
               <button
                 type="button"
                 onClick={() => selectRecent(r, afterSelect)}
-                className={`flex w-full cursor-pointer flex-col items-start gap-0.5 rounded-md border px-3 py-2 text-left transition-colors ${
+                className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg border px-3 py-2.5 text-left transition-colors ${
                   active
                     ? "border-primary/40 bg-primary/10"
-                    : "border-transparent hover:border-border hover:bg-card"
+                    : "border-border hover:border-primary/40 hover:bg-card"
                 }`}
               >
-                <span className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
-                  {r.name}
+                <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-primary">
+                  {r.id}
                 </span>
-                {r.orgName && (
-                  <span className="truncate text-xs text-muted-foreground">
-                    {r.orgName}
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
+                    {r.name}
                   </span>
-                )}
+                  {r.orgName && (
+                    <span className="truncate text-xs text-muted-foreground">
+                      {r.orgName}
+                    </span>
+                  )}
+                </span>
+                <ChevronRight className="size-4 shrink-0 text-muted-foreground" />
               </button>
             </li>
           )
@@ -254,7 +292,7 @@ export default function Page() {
       <aside className="hidden w-60 shrink-0 lg:block">
         <div className="sticky top-10">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-foreground">
+            <h2 className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary">
               {t("recent.title")}
             </h2>
             {recents.length > 0 && (
@@ -273,11 +311,8 @@ export default function Page() {
 
       <main className="min-w-0 flex-1">
       <header className="mb-8">
-        <div className="mb-3 flex items-start justify-between gap-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
-            <span className="size-1.5 rounded-full bg-primary" />
-            {t("header.eyebrow")}
-          </div>
+        <div className="mb-5 flex items-center justify-between gap-4">
+          <BrandMark />
           <div className="flex items-center gap-2">
             <ThemeSwitcher />
             <LanguageSwitcher />
@@ -291,38 +326,49 @@ export default function Page() {
         </p>
       </header>
 
-      <form onSubmit={handleCalculate} className="flex flex-col gap-3 sm:flex-row">
-        <Input
-          type="url"
-          inputMode="url"
-          placeholder={EXAMPLE}
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="h-11 flex-1"
-          aria-label={t("form.urlLabel")}
-        />
-        <Button type="submit" disabled={loading || !url.trim()} className="h-11 px-6">
-          {loading ? (
-            <>
-              <Loader2 className="size-4 animate-spin" />
-              {t("form.calculating")}
-            </>
-          ) : (
-            t("form.calculate")
-          )}
-        </Button>
-      </form>
-
-      <div className="mt-2 text-sm text-muted-foreground">
-        {t("form.tryExample")}{" "}
-        <button
-          type="button"
-          onClick={() => setUrl(EXAMPLE)}
-          className="font-mono text-primary underline-offset-4 hover:underline"
+      <form
+        onSubmit={handleCalculate}
+        className="rounded-xl border border-border bg-card p-4 sm:p-5"
+      >
+        <label
+          htmlFor="tournament-url"
+          className="mb-2 block text-[10.5px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
         >
-          {EXAMPLE}
-        </button>
-      </div>
+          {t("form.urlLabel")}
+        </label>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Input
+            id="tournament-url"
+            type="url"
+            inputMode="url"
+            placeholder={EXAMPLE}
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="h-11 flex-1 font-mono text-sm"
+            aria-label={t("form.urlLabel")}
+          />
+          <Button type="submit" disabled={loading || !url.trim()} className="h-11 px-6">
+            {loading ? (
+              <>
+                <Loader2 className="size-4 animate-spin" />
+                {t("form.calculating")}
+              </>
+            ) : (
+              t("form.calculate")
+            )}
+          </Button>
+        </div>
+        <div className="mt-3 text-sm text-muted-foreground">
+          {t("form.tryExample")}{" "}
+          <button
+            type="button"
+            onClick={() => setUrl(EXAMPLE)}
+            className="font-mono text-primary underline-offset-4 hover:underline"
+          >
+            {EXAMPLE}
+          </button>
+        </div>
+      </form>
 
       {recents.length > 0 && (
         <div className="mt-6 lg:hidden">
@@ -369,46 +415,53 @@ export default function Page() {
 
       {data && result && (
         <section className="mt-10">
-          <div className="mb-6 rounded-lg border border-border bg-card p-5">
-            <div className="flex items-start gap-3">
-              <div className="mt-0.5 rounded-md bg-primary/15 p-2 text-primary">
-                <Trophy className="size-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-semibold leading-tight">
-                  <a
-                    href={data.tournament.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline-offset-4 hover:text-primary hover:underline"
-                  >
-                    {data.tournament.name}
-                  </a>
-                </h2>
-                <div className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-                  {data.tournament.orgName && <span>{data.tournament.orgName}</span>}
-                  {data.tournament.location && (
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="size-3.5" />
-                      {data.tournament.location}
-                    </span>
-                  )}
-                  {data.tournament.start && (
-                    <span className="inline-flex items-center gap-1">
-                      <Calendar className="size-3.5" />
-                      {new Date(data.tournament.start).toLocaleDateString()}
-                    </span>
-                  )}
-                  <span>{t("tournament.players", { n: data.players.length })}</span>
-                  <span>{t("tournament.matches", { n: data.matches.length })}</span>
-                </div>
-                <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                  {data.tournament.processed
-                    ? t("tournament.processed")
-                    : t("tournament.unprocessed")}
-                </p>
-              </div>
+          <div className="mb-6 flex flex-col gap-2.5">
+            <div className="flex items-center gap-2">
+              <span className="rounded border border-primary/40 bg-primary/10 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-primary">
+                {data.tournament.id}
+              </span>
+              <a
+                href={data.tournament.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs text-muted-foreground underline-offset-4 hover:text-primary hover:underline"
+              >
+                ligas.io
+                <ExternalLink className="size-3" />
+              </a>
             </div>
+            <h2 className="text-balance text-xl font-bold uppercase tracking-[0.02em] text-primary md:text-2xl">
+              <a
+                href={data.tournament.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline-offset-4 hover:underline"
+              >
+                {data.tournament.name}
+              </a>
+            </h2>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+              {data.tournament.orgName && <span>{data.tournament.orgName}</span>}
+              {data.tournament.location && (
+                <span className="inline-flex items-center gap-1">
+                  <MapPin className="size-3.5" />
+                  {data.tournament.location}
+                </span>
+              )}
+              {data.tournament.start && (
+                <span className="inline-flex items-center gap-1">
+                  <Calendar className="size-3.5" />
+                  {new Date(data.tournament.start).toLocaleDateString()}
+                </span>
+              )}
+              <span>{t("tournament.players", { n: data.players.length })}</span>
+              <span>{t("tournament.matches", { n: data.matches.length })}</span>
+            </div>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {data.tournament.processed
+                ? t("tournament.processed")
+                : t("tournament.unprocessed")}
+            </p>
           </div>
 
           <Tabs defaultValue="players">
@@ -475,6 +528,39 @@ export default function Page() {
                   </button>
                 )}
               </div>
+              {filterPlayerId &&
+                (() => {
+                  const fp = result.players.find((p) => p.id === filterPlayerId)
+                  if (!fp) return null
+                  const before = startRatings[fp.id] ?? DEFAULT_RATING
+                  return (
+                    <div className="mb-4 flex items-center gap-3 rounded-lg border border-border bg-card p-4">
+                      <div className="flex size-11 shrink-0 items-center justify-center rounded-full border border-primary/40 bg-primary/10 text-sm font-bold text-primary">
+                        {initials(fp.name)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-bold text-foreground">
+                          {fp.name}
+                        </div>
+                        <div className="text-xs text-muted-foreground">
+                          {t("matches.record", {
+                            n: filteredMatches.length,
+                            w: fp.wins,
+                            l: fp.losses,
+                          })}
+                        </div>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end">
+                        <span className="font-mono text-[11px] text-negative line-through">
+                          {before.toFixed(1)}
+                        </span>
+                        <span className="font-mono text-lg font-bold text-primary">
+                          {fp.ratingAfter.toFixed(1)}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })()}
               <MatchesTable
                 matches={filteredMatches}
                 highlightId={filterPlayerId || undefined}

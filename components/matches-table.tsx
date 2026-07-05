@@ -32,7 +32,7 @@ function PlayerName({
   // Keep the column's own color (green winner / muted loser) when highlighted —
   // only add a clearly-visible amber pill + weight, never override the text color.
   const highlight = highlighted
-    ? "rounded px-1 font-semibold bg-amber-400/20 ring-1 ring-inset ring-amber-500/50"
+    ? "rounded px-1 font-semibold bg-primary/15 ring-1 ring-inset ring-primary/40"
     : ""
   if (url) {
     return (
@@ -93,7 +93,7 @@ export function MatchesTable({
     <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
         <TableHeader>
-          <TableRow className="hover:bg-transparent">
+          <TableRow className="hover:bg-transparent [&>th]:text-[10.5px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-[0.1em] [&>th]:text-muted-foreground">
             <TableHead>{t("matches.col.winner")}</TableHead>
             <TableHead className="text-center">{t("matches.col.score")}</TableHead>
             <TableHead>{t("matches.col.loser")}</TableHead>

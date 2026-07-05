@@ -52,11 +52,13 @@ function RatingInput({
   )
 }
 
+// Δ shown as a compact pill (colored fill + border), matching the design's
+// rating-change badge. Zero is a quiet dash, no pill.
 function ChangeCell({ change }: { change: number }) {
   if (Math.abs(change) < 0.05) {
     return (
-      <span className="inline-flex items-center gap-1 font-mono text-muted-foreground">
-        <Minus className="size-3.5" />
+      <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground">
+        <Minus className="size-3" />
         0.0
       </span>
     )
@@ -64,11 +66,13 @@ function ChangeCell({ change }: { change: number }) {
   const up = change > 0
   return (
     <span
-      className={`inline-flex items-center gap-1 font-mono font-medium ${
-        up ? "text-positive" : "text-negative"
+      className={`inline-flex items-center gap-0.5 rounded-md border px-1.5 py-0.5 font-mono text-xs font-semibold ${
+        up
+          ? "border-positive/30 bg-positive/15 text-positive"
+          : "border-negative/30 bg-negative/15 text-negative"
       }`}
     >
-      {up ? <ArrowUp className="size-3.5" /> : <ArrowDown className="size-3.5" />}
+      {up ? <ArrowUp className="size-3" /> : <ArrowDown className="size-3" />}
       {up ? "+" : ""}
       {change.toFixed(1)}
     </span>
@@ -91,7 +95,7 @@ export function ResultsTable({
     <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
         <TableHeader>
-          <TableRow className="hover:bg-transparent">
+          <TableRow className="hover:bg-transparent [&>th]:text-[10.5px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-[0.1em] [&>th]:text-muted-foreground">
             <TableHead className="w-12 text-center">#</TableHead>
             <TableHead>{t("results.col.player")}</TableHead>
             <TableHead className="text-center">{t("results.col.wl")}</TableHead>
@@ -145,7 +149,7 @@ export function ResultsTable({
                   ariaLabel={t("results.startRatingFor", { name: p.name })}
                 />
               </TableCell>
-              <TableCell className="text-right font-mono font-semibold">
+              <TableCell className="text-right font-mono font-semibold text-primary">
                 {p.ratingAfter.toFixed(1)}
               </TableCell>
               <TableCell className="text-right">

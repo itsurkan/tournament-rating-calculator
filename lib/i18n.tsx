@@ -63,6 +63,7 @@ const en = {
   "matches.col.stage": "Stage",
   "matches.col.points": "Points",
   "matches.totalPoints": "{name}: total",
+  "matches.record": "{n} matches · {w} wins – {l} losses",
   "error.no_tournament_id": "Could not find a tournament id in that URL.",
   "error.fetch_failed": "Failed to load this tournament from ligas.io.",
   "error.unknown": "Something went wrong.",
@@ -123,6 +124,7 @@ const uk: Record<TKey, string> = {
   "matches.col.stage": "Етап",
   "matches.col.points": "Очки",
   "matches.totalPoints": "{name}: разом",
+  "matches.record": "{n} матчів · {w} перемоги – {l} поразки",
   "error.no_tournament_id":
     "Не вдалося знайти ідентифікатор турніру в цьому посиланні.",
   "error.fetch_failed": "Не вдалося завантажити цей турнір з ligas.io.",
