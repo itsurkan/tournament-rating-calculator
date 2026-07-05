@@ -552,30 +552,30 @@ export default function Page() {
               <p className="mb-3 text-sm text-muted-foreground">
                 {t("matches.help")}
               </p>
-              <div
-                role="group"
-                aria-label={t("matches.filterLabel")}
-                className="mb-4 flex gap-2 overflow-x-auto pb-1"
-              >
-                {[{ id: "", label: t("matches.filterAll") }, ...result.players.map((p) => ({ id: p.id, label: p.name.split(" ")[0] }))].map(
-                  (chip) => {
-                    const active = filterPlayerId === chip.id
-                    return (
-                      <button
-                        key={chip.id || "all"}
-                        type="button"
-                        onClick={() => setFilterPlayerId(chip.id)}
-                        aria-pressed={active}
-                        className={`shrink-0 rounded-full border px-3.5 py-1.5 text-sm font-medium whitespace-nowrap transition-colors ${
-                          active
-                            ? "border-primary/50 bg-primary/15 text-primary"
-                            : "border-border text-foreground/70 hover:border-primary/40 hover:text-foreground"
-                        }`}
-                      >
-                        {chip.label}
-                      </button>
-                    )
-                  },
+              <div className="mb-4 flex flex-wrap items-center gap-2">
+                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                  {t("matches.filterLabel")}
+                  <select
+                    value={filterPlayerId}
+                    onChange={(e) => setFilterPlayerId(e.target.value)}
+                    className="h-9 rounded-md border border-input bg-transparent px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  >
+                    <option value="">{t("matches.filterAll")}</option>
+                    {result.players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {filterPlayerId && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterPlayerId("")}
+                    className="text-sm text-primary underline-offset-4 hover:underline"
+                  >
+                    {t("matches.filterClear")}
+                  </button>
                 )}
               </div>
               {filterPlayerId &&

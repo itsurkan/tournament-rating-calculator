@@ -212,7 +212,7 @@ function MatchCard({
 }) {
   const [wGames, lGames] = m.score.split(/[:\-]/)
   return (
-    <div className="rounded-lg border border-border bg-card p-4">
+    <div className="rounded-lg border border-border bg-card px-4 py-2.5">
       <div className="flex items-center gap-3">
         <PlayerName
           id={m.winnerId}
@@ -227,7 +227,7 @@ function MatchCard({
           {signedPoints(m.winnerPoints)}
         </span>
       </div>
-      <div className="mt-2 flex items-center gap-3">
+      <div className="mt-0.5 flex items-center gap-3">
         <PlayerName
           id={m.loserId}
           name={m.loserName}
@@ -273,7 +273,7 @@ function AllMatches({
   return (
     <div className="flex flex-col gap-6">
       {groups.map((g, gi) => (
-        <div key={`${g.stage}-${gi}`} className="flex flex-col gap-2">
+        <div key={`${g.stage}-${gi}`} className="flex flex-col gap-1.5">
           {g.stage && (
             <div className="flex items-center gap-3">
               <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
