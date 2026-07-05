@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Inter_Tight, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { LanguageProvider } from '@/lib/i18n'
 import { ThemeProvider } from '@/lib/theme'
@@ -17,10 +17,15 @@ const themeScript = `
 }catch(e){}})();
 `
 
-const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+// Inter Tight (UI) + JetBrains Mono (ratings, scores, ids) — the "Ligas ·
+// Рейтинг" premium sport look. Latin + Cyrillic so Ukrainian renders in-family.
+const interTight = Inter_Tight({
+  variable: '--font-inter-tight',
+  subsets: ['latin', 'cyrillic'],
+})
+const jetbrainsMono = JetBrains_Mono({
+  variable: '--font-jetbrains-mono',
+  subsets: ['latin', 'cyrillic'],
 })
 
 export const metadata: Metadata = {
@@ -50,8 +55,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   colorScheme: 'light dark',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
-    { media: '(prefers-color-scheme: dark)', color: '#1b1b1f' },
+    { media: '(prefers-color-scheme: light)', color: '#faf8f3' },
+    { media: '(prefers-color-scheme: dark)', color: '#0e1115' },
   ],
 }
 
@@ -63,7 +68,7 @@ export default function RootLayout({
   return (
     <html
       lang="uk"
-      className={`${geistSans.variable} ${geistMono.variable}`}
+      className={`${interTight.variable} ${jetbrainsMono.variable}`}
       suppressHydrationWarning
     >
       <body className="font-sans antialiased bg-background text-foreground">

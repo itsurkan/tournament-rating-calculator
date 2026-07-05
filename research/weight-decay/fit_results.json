@@ -1,0 +1,12 @@
+{
+  "model": "w' = round(min(56, w - w^2/225)) applied once per calendar-month boundary crossed",
+  "K": 225,
+  "cap": 56,
+  "mae": 0.17647058823529413,
+  "exactPct": 90.19607843137256,
+  "n": 51,
+  "zeroBoundaryCheck": {
+    "n": 144,
+    "exactMatches": 143
+  }
+}

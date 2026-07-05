@@ -105,10 +105,30 @@ closingWeight = initialWeight + contestWeight
 `weight` is "experience" — how many decisive results back a rating. A provisional
 player starts at weight 0.
 
-> **Limitation:** weight does **not** simply carry between tournaments — ligas
-> decays it over time. This engine does not model that decay, so for an
-> *unprocessed* tournament the magnitude of changes can be larger than ligas'
-> eventual official numbers.
+### Weight decay between tournaments
+
+Weight does **not** simply carry between tournaments — ligas decays it at every
+**calendar-month boundary** (within the same month, `initialWeight` always
+equals the previous `finalWeight`; 143/144 observed pairs). The rule, reverse-
+engineered from 195 consecutive history pairs across 16 players
+(`research/weight-decay/FINDINGS.md`):
+
+```
+w' = round(min(56, w − w² / 225))      // applied once per month boundary
+```
+
+90% exact matches, MAE 0.18 on all 51 cross-boundary pairs. Fresh light weight
+barely decays (11 → 10, ~9%), old heavy weight loses 25–45% (100 → 56, 91 → 54).
+`decayWeight()` in `lib/rating.ts`; the API route applies it when predicting an
+**unprocessed** tournament from a player's latest history entry.
+
+> Concrete case (`4vfczq`, Квасніцький): the pre-decay prediction used his
+> previous `finalWeight` 11 → delta 10/16 → **+0.6** (5.9 → 6.5). Ligas decayed
+> the weight to **10** at the July boundary → delta 10/15 → official **+0.7**
+> (5.9 → **6.6**). With `decayWeight` the live prediction now matches the
+> official result. Residual risk: the formula misses by ≤2 weight points at the
+> extremes (w ≲ 9, w ≳ 130), which can occasionally shift a displayed change by
+> 0.1.
 
 ---
 
@@ -187,6 +207,13 @@ independent facts:
 ---
 
 ## Verification
+
+Regression tests live in `lib/__tests__/` (`pnpm test` — vitest). Each fixture
+is an already-processed tournament with ligas' pre-tournament `initial` values
+as input and the stored official `final` / `finalWeight` as the expected
+output; the engine must reproduce every rated player exactly. Currently
+covered: `4vfczq` (all 5 rated players + the +0.6/+0.7 weight-decay case).
+Add a fixture per newly verified tournament.
 
 A reproduction harness feeds each player's **pre-tournament confirmed rating**
 into already-processed tournaments and checks the engine reproduces ligas'
