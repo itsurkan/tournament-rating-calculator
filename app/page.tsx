@@ -11,7 +11,7 @@ import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, MapPin, Calendar, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
+import { Loader2, MapPin, Calendar, ChevronDown, ChevronRight, ExternalLink, Check, Pencil } from "lucide-react"
 import { VisitorsPanel } from "@/components/visitors-panel"
 
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
@@ -89,8 +89,12 @@ export default function Page() {
   const [errorKey, setErrorKey] = useState<TKey | null>(null)
   const [data, setData] = useState<TournamentResponse | null>(null)
   const [startRatings, setStartRatings] = useState<Record<string, number>>({})
+  // Snapshot of the ratings ligas reported, so edit mode can be reset.
+  const [initialRatings, setInitialRatings] = useState<Record<string, number>>({})
   const [factor, setFactor] = useState(1)
   const [filterPlayerId, setFilterPlayerId] = useState("")
+  const [tab, setTab] = useState("players")
+  const [editing, setEditing] = useState(false)
   const [recents, setRecents] = useState<RecentItem[]>([])
   const [recentsOpen, setRecentsOpen] = useState(false)
 
@@ -145,6 +149,8 @@ export default function Page() {
         ratings[p.id] = p.ranking != null ? Math.round(p.ranking * 100) / 100 : DEFAULT_RATING
       }
       setStartRatings(ratings)
+      setInitialRatings(ratings)
+      setEditing(false)
       setData(payload)
       setUrl(payload.tournament.url)
       addRecent(payload.tournament)
@@ -230,6 +236,12 @@ export default function Page() {
 
   function setRating(id: string, value: number) {
     setStartRatings((prev) => ({ ...prev, [id]: value }))
+  }
+
+  // Restore every start rating to the value ligas originally reported.
+  function resetRatings() {
+    setStartRatings(initialRatings)
+    setFactor(1)
   }
 
   const activeId = data?.tournament.id ?? null
@@ -464,35 +476,73 @@ export default function Page() {
             </p>
           </div>
 
-          <Tabs defaultValue="players">
-            <TabsList>
-              <TabsTrigger value="players">{t("tabs.players")}</TabsTrigger>
-              <TabsTrigger value="matches">
-                {t("tabs.matches", { n: result.matches.length })}
-              </TabsTrigger>
-            </TabsList>
+          <Tabs value={tab} onValueChange={(v) => setTab(v as string)}>
+            <div className="flex items-center justify-between gap-3">
+              <TabsList>
+                <TabsTrigger value="players">{t("tabs.players")}</TabsTrigger>
+                <TabsTrigger value="matches">
+                  {t("tabs.matches", { n: result.matches.length })}
+                </TabsTrigger>
+              </TabsList>
+              {tab === "players" && (
+                <button
+                  type="button"
+                  onClick={() => setEditing((e) => !e)}
+                  aria-pressed={editing}
+                  className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    editing
+                      ? "border-primary/50 bg-primary/15 text-primary"
+                      : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  {editing ? (
+                    <>
+                      <Check className="size-3.5" />
+                      {t("results.editDone")}
+                    </>
+                  ) : (
+                    <>
+                      <Pencil className="size-3.5" />
+                      {t("results.edit")}
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
             <TabsContent value="players" className="mt-4">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-sm text-muted-foreground">
-                  {t("players.help")}
-                </p>
-                <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                  {t("players.factor")}
-                  <Input
-                    type="number"
-                    step="0.1"
-                    min="0"
-                    value={factor}
-                    onChange={(e) => setFactor(Number(e.target.value))}
-                    className="h-8 w-20 text-right font-mono"
-                    aria-label={t("players.factorAria")}
-                  />
-                </label>
-              </div>
+              {editing && (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <p className="text-sm text-muted-foreground">
+                    {t("players.help")}
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <label className="inline-flex items-center gap-2 text-sm text-muted-foreground">
+                      {t("players.factor")}
+                      <Input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={factor}
+                        onChange={(e) => setFactor(Number(e.target.value))}
+                        className="h-8 w-20 text-right font-mono"
+                        aria-label={t("players.factorAria")}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={resetRatings}
+                      className="rounded-md border border-border px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+                    >
+                      {t("results.reset")}
+                    </button>
+                  </div>
+                </div>
+              )}
               <ResultsTable
                 results={result.players}
                 startRatings={startRatings}
                 onRatingChange={setRating}
+                editing={editing}
                 profileUrls={Object.fromEntries(
                   data.players.map((p) => [p.id, p.profileUrl]),
                 )}

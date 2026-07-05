@@ -1,5 +1,7 @@
 "use client"
 
+import { useState } from "react"
+import { ChevronDown } from "lucide-react"
 import type { MatchContribution } from "@/lib/rating"
 import { useI18n } from "@/lib/i18n"
 import {
@@ -180,8 +182,6 @@ export function MatchesTable({
   highlightId?: string
   profileUrls?: Record<string, string | null>
 }) {
-  const { t } = useI18n()
-
   // Filtered to a single participant → show the design's first-person layout.
   if (highlightId) {
     return (
@@ -193,68 +193,123 @@ export function MatchesTable({
     )
   }
 
-  // Unfiltered → the full winner-vs-loser table with per-side points.
+  // Unfiltered → the design's match cards, grouped by stage, with progressive
+  // disclosure.
+  return <AllMatches matches={matches} profileUrls={profileUrls} />
+}
+
+const INITIAL_VISIBLE = 8
+
+// A single match card: winner and loser stacked, each with their games won and
+// the points they earned/lost. (ligas only exposes the aggregate game score —
+// there are no per-set scores to show.)
+function MatchCard({
+  m,
+  profileUrls,
+}: {
+  m: MatchContribution
+  profileUrls: Record<string, string | null>
+}) {
+  const [wGames, lGames] = m.score.split(/[:\-]/)
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent [&>th]:text-[10.5px] [&>th]:font-semibold [&>th]:uppercase [&>th]:tracking-[0.1em] [&>th]:text-muted-foreground">
-            <TableHead>{t("matches.col.winner")}</TableHead>
-            <TableHead className="text-center">{t("matches.col.score")}</TableHead>
-            <TableHead>{t("matches.col.loser")}</TableHead>
-            <TableHead className="hidden md:table-cell">{t("matches.col.stage")}</TableHead>
-            <TableHead className="text-right">{t("matches.col.points")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {matches.map((m, i) => (
-            // ligas numbers games per stage, so gameId repeats across stages —
-            // qualify it with the stage (and index) to keep React keys unique.
-            <TableRow key={`${m.stageName}-${m.gameId}-${i}`}>
-              <TableCell>
-                <div className="flex flex-col">
-                  <PlayerName
-                    id={m.winnerId}
-                    name={m.winnerName}
-                    profileUrls={profileUrls}
-                    className="font-semibold text-positive"
-                  />
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {m.winnerRatingBefore.toFixed(1)}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="text-center font-mono text-sm tabular-nums">
-                {m.score}
-              </TableCell>
-              <TableCell>
-                <div className="flex flex-col">
-                  <PlayerName
-                    id={m.loserId}
-                    name={m.loserName}
-                    profileUrls={profileUrls}
-                    className="text-muted-foreground"
-                  />
-                  <span className="font-mono text-xs text-muted-foreground/70">
-                    {m.loserRatingBefore.toFixed(1)}
-                  </span>
-                </div>
-              </TableCell>
-              <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
-                {m.stageName}
-              </TableCell>
-              <TableCell className="text-right font-mono">
-                <span className="font-medium text-positive">
-                  {m.winnerPoints >= 0 ? "+" : ""}
-                  {m.winnerPoints}
-                </span>
-                <span className="text-muted-foreground"> / </span>
-                <span className="text-negative">{m.loserPoints}</span>
-              </TableCell>
-            </TableRow>
+    <div className="rounded-lg border border-border bg-card p-4">
+      <div className="flex items-center gap-3">
+        <PlayerName
+          id={m.winnerId}
+          name={m.winnerName}
+          profileUrls={profileUrls}
+          className="min-w-0 flex-1 truncate font-semibold text-foreground"
+        />
+        <span className="w-5 text-right font-mono text-sm font-bold text-primary">
+          {wGames?.trim()}
+        </span>
+        <span className="w-14 text-right font-mono text-sm font-semibold text-positive">
+          {signedPoints(m.winnerPoints)}
+        </span>
+      </div>
+      <div className="mt-2 flex items-center gap-3">
+        <PlayerName
+          id={m.loserId}
+          name={m.loserName}
+          profileUrls={profileUrls}
+          className="min-w-0 flex-1 truncate text-muted-foreground"
+        />
+        <span className="w-5 text-right font-mono text-sm text-muted-foreground">
+          {lGames?.trim()}
+        </span>
+        <span className="w-14 text-right font-mono text-sm text-negative">
+          {signedPoints(m.loserPoints)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+function AllMatches({
+  matches,
+  profileUrls,
+}: {
+  matches: MatchContribution[]
+  profileUrls: Record<string, string | null>
+}) {
+  const { t } = useI18n()
+  const [expanded, setExpanded] = useState(false)
+
+  // Full per-stage counts (for the group headers), independent of what's shown.
+  const stageSizes = new Map<string, number>()
+  for (const m of matches) stageSizes.set(m.stageName, (stageSizes.get(m.stageName) ?? 0) + 1)
+
+  const shown = expanded ? matches : matches.slice(0, INITIAL_VISIBLE)
+  const hiddenCount = matches.length - shown.length
+
+  // Group the shown matches into consecutive same-stage runs.
+  const groups: { stage: string; items: MatchContribution[] }[] = []
+  for (const m of shown) {
+    const last = groups[groups.length - 1]
+    if (last && last.stage === m.stageName) last.items.push(m)
+    else groups.push({ stage: m.stageName, items: [m] })
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      {groups.map((g, gi) => (
+        <div key={`${g.stage}-${gi}`} className="flex flex-col gap-2">
+          {g.stage && (
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                {g.stage}
+              </span>
+              <span className="h-px flex-1 bg-border" />
+              <span className="font-mono text-[11px] text-muted-foreground">
+                {t("matches.roundCount", { n: stageSizes.get(g.stage) ?? g.items.length })}
+              </span>
+            </div>
+          )}
+          {g.items.map((m, i) => (
+            <MatchCard key={`${m.stageName}-${m.gameId}-${i}`} m={m} profileUrls={profileUrls} />
           ))}
-        </TableBody>
-      </Table>
+        </div>
+      ))}
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        >
+          {t("matches.showMore", { n: hiddenCount })}
+          <ChevronDown className="size-4" />
+        </button>
+      )}
+      {expanded && matches.length > INITIAL_VISIBLE && (
+        <button
+          type="button"
+          onClick={() => setExpanded(false)}
+          className="flex items-center justify-center gap-1.5 rounded-lg border border-border py-3 text-sm font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+        >
+          {t("matches.showLess")}
+          <ChevronDown className="size-4 rotate-180" />
+        </button>
+      )}
     </div>
   )
 }
