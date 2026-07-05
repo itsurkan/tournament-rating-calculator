@@ -6,6 +6,7 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableFooter,
   TableHead,
   TableHeader,
   TableRow,
@@ -66,6 +67,28 @@ export function MatchesTable({
   profileUrls?: Record<string, string | null>
 }) {
   const { t } = useI18n()
+
+  // When filtered to a single participant, sum the points THEY earned/lost
+  // across the shown matches (winner side when they won, loser side when they
+  // lost) and surface it as a footer total.
+  const highlightMatches = highlightId
+    ? matches.filter((m) => m.winnerId === highlightId || m.loserId === highlightId)
+    : []
+  const highlightName = highlightMatches.length
+    ? highlightMatches[0].winnerId === highlightId
+      ? highlightMatches[0].winnerName
+      : highlightMatches[0].loserName
+    : ""
+  const highlightTotal = highlightMatches.reduce(
+    (sum, m) => sum + (m.winnerId === highlightId ? m.winnerPoints : m.loserPoints),
+    0,
+  )
+
+  // Amber pill matching the highlighted name, reused on the points value that
+  // belongs to the filtered participant.
+  const pointsPill =
+    "rounded px-1 bg-amber-400/20 ring-1 ring-inset ring-amber-500/50"
+
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
       <Table>
@@ -118,16 +141,58 @@ export function MatchesTable({
                 {m.stageName}
               </TableCell>
               <TableCell className="text-right font-mono">
-                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                <span
+                  className={[
+                    "font-medium text-emerald-600 dark:text-emerald-400",
+                    m.winnerId === highlightId ? pointsPill : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
                   {m.winnerPoints >= 0 ? "+" : ""}
                   {m.winnerPoints}
                 </span>
                 <span className="text-muted-foreground"> / </span>
-                <span className="text-destructive">{m.loserPoints}</span>
+                <span
+                  className={[
+                    "text-destructive",
+                    m.loserId === highlightId ? pointsPill : "",
+                  ]
+                    .filter(Boolean)
+                    .join(" ")}
+                >
+                  {m.loserPoints}
+                </span>
               </TableCell>
             </TableRow>
           ))}
         </TableBody>
+        {highlightMatches.length > 0 && (
+          <TableFooter>
+            <TableRow className="hover:bg-transparent">
+              <TableCell
+                colSpan={4}
+                className="text-right text-sm font-medium text-muted-foreground"
+              >
+                {t("matches.totalPoints", { name: highlightName })}
+              </TableCell>
+              <TableCell className="text-right font-mono">
+                <span
+                  className={[
+                    "font-semibold",
+                    pointsPill,
+                    highlightTotal >= 0
+                      ? "text-emerald-600 dark:text-emerald-400"
+                      : "text-destructive",
+                  ].join(" ")}
+                >
+                  {highlightTotal > 0 ? "+" : ""}
+                  {highlightTotal}
+                </span>
+              </TableCell>
+            </TableRow>
+          </TableFooter>
+        )}
       </Table>
     </div>
   )
