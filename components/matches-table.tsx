@@ -84,10 +84,10 @@ export function MatchesTable({
     0,
   )
 
-  // Amber pill matching the highlighted name, reused on the points value that
+  // Gold pill matching the highlighted name, reused on the points value that
   // belongs to the filtered participant.
   const pointsPill =
-    "rounded px-1 bg-amber-400/20 ring-1 ring-inset ring-amber-500/50"
+    "rounded px-1 bg-primary/15 ring-1 ring-inset ring-primary/40"
 
   return (
     <div className="overflow-x-auto rounded-lg border border-border">
@@ -113,7 +113,7 @@ export function MatchesTable({
                     name={m.winnerName}
                     highlightId={highlightId}
                     profileUrls={profileUrls}
-                    className="font-semibold text-emerald-600 dark:text-emerald-400"
+                    className="font-semibold text-positive"
                   />
                   <span className="font-mono text-xs text-muted-foreground">
                     {m.winnerRatingBefore.toFixed(1)}
@@ -143,7 +143,7 @@ export function MatchesTable({
               <TableCell className="text-right font-mono">
                 <span
                   className={[
-                    "font-medium text-emerald-600 dark:text-emerald-400",
+                    "font-medium text-positive",
                     m.winnerId === highlightId ? pointsPill : "",
                   ]
                     .filter(Boolean)
@@ -155,7 +155,7 @@ export function MatchesTable({
                 <span className="text-muted-foreground"> / </span>
                 <span
                   className={[
-                    "text-destructive",
+                    "text-negative",
                     m.loserId === highlightId ? pointsPill : "",
                   ]
                     .filter(Boolean)
@@ -182,8 +182,8 @@ export function MatchesTable({
                     "font-semibold",
                     pointsPill,
                     highlightTotal >= 0
-                      ? "text-emerald-600 dark:text-emerald-400"
-                      : "text-destructive",
+                      ? "text-positive"
+                      : "text-negative",
                   ].join(" ")}
                 >
                   {highlightTotal > 0 ? "+" : ""}

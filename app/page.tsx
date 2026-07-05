@@ -274,7 +274,7 @@ export default function Page() {
       <main className="min-w-0 flex-1">
       <header className="mb-8">
         <div className="mb-3 flex items-start justify-between gap-4">
-          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-semibold uppercase tracking-[0.12em] text-primary">
             <span className="size-1.5 rounded-full bg-primary" />
             {t("header.eyebrow")}
           </div>
@@ -283,7 +283,7 @@ export default function Page() {
             <LanguageSwitcher />
           </div>
         </div>
-        <h1 className="text-balance text-3xl font-semibold tracking-tight md:text-4xl">
+        <h1 className="text-balance text-3xl font-bold uppercase tracking-[0.02em] text-primary md:text-4xl">
           {t("header.title")}
         </h1>
         <p className="mt-2 max-w-2xl text-pretty leading-relaxed text-muted-foreground">
