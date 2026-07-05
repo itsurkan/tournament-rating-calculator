@@ -3,7 +3,6 @@
 import type { PlayerResult } from "@/lib/rating"
 import { useI18n } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
 import { useEffect, useState } from "react"
 
 function RatingInput({
@@ -106,7 +105,7 @@ export function ResultsTable({
   if (editing) {
     return (
       <div className="overflow-hidden rounded-lg border border-border">
-        <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_auto] items-center gap-2 border-b border-border px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+        <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_3.25rem] items-center gap-2 border-b border-border px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
           <span className="text-center">#</span>
           <span>{t("results.col.player")}</span>
           <span className="text-right">{t("results.col.startRating")}</span>
@@ -115,7 +114,7 @@ export function ResultsTable({
         {results.map((p, i) => (
           <div
             key={p.id}
-            className="grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_auto] items-center gap-2 border-b border-border px-3 py-2.5 last:border-b-0"
+            className="grid grid-cols-[1.75rem_minmax(0,1fr)_5rem_3.25rem] items-center gap-2 border-b border-border px-3 py-2.5 last:border-b-0"
           >
             <span className="text-center font-mono text-xs text-muted-foreground">
               {String(i + 1).padStart(2, "0")}
@@ -157,7 +156,7 @@ export function ResultsTable({
   // old (struck) → new (gold) stacked, and Δ as a pill.
   return (
     <div className="overflow-hidden rounded-lg border border-border">
-      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+      <div className="grid grid-cols-[1.75rem_minmax(0,1fr)_3.5rem_4rem] items-center gap-3 border-b border-border px-3 py-2.5 text-[10.5px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
         <span className="text-center">#</span>
         <span>{t("results.col.player")}</span>
         <span className="text-right">{t("results.col.rating")}</span>
@@ -169,7 +168,7 @@ export function ResultsTable({
         return (
           <div
             key={p.id}
-            className="grid grid-cols-[1.75rem_minmax(0,1fr)_auto_auto] items-center gap-3 border-b border-border px-3 py-3 last:border-b-0"
+            className="grid grid-cols-[1.75rem_minmax(0,1fr)_3.5rem_4rem] items-center gap-3 border-b border-border px-3 py-3 last:border-b-0"
           >
             <span className="text-center font-mono text-xs text-muted-foreground">
               {String(i + 1).padStart(2, "0")}
@@ -180,12 +179,13 @@ export function ResultsTable({
                 {p.wins}–{p.losses}
               </span>
               {p.provisional && (
-                <Badge
-                  variant="outline"
-                  className="shrink-0 text-[10px] uppercase tracking-wide"
+                <span
+                  title={t("results.provisional")}
+                  aria-label={t("results.provisional")}
+                  className="inline-flex size-[18px] shrink-0 items-center justify-center rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground"
                 >
-                  {t("results.provisional")}
-                </Badge>
+                  {t("results.provisional").charAt(0)}
+                </span>
               )}
             </div>
             <div className="flex flex-col items-end leading-tight">
