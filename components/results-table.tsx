@@ -76,12 +76,12 @@ function PlayerName({
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      className="truncate font-semibold underline-offset-4 hover:text-primary hover:underline"
+      className="font-semibold underline-offset-4 hover:text-primary hover:underline"
     >
       {p.name}
     </a>
   ) : (
-    <span className="truncate font-semibold">{p.name}</span>
+    <span className="font-semibold">{p.name}</span>
   )
 }
 
@@ -178,15 +178,6 @@ export function ResultsTable({
               <span className="shrink-0 font-mono text-xs text-muted-foreground">
                 {p.wins}–{p.losses}
               </span>
-              {p.provisional && (
-                <span
-                  title={t("results.provisional")}
-                  aria-label={t("results.provisional")}
-                  className="inline-flex size-[18px] shrink-0 items-center justify-center rounded border border-border text-[10px] font-semibold uppercase text-muted-foreground"
-                >
-                  {t("results.provisional").charAt(0)}
-                </span>
-              )}
             </div>
             <div className="flex flex-col items-end leading-tight">
               {changed && (
