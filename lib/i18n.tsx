@@ -24,6 +24,8 @@ const en = {
   "form.calculate": "Calculate",
   "form.calculating": "Calculating",
   "form.tryExample": "Try the example:",
+  "form.clear": "Clear",
+  "form.paste": "Paste from clipboard",
   "tournament.players": "{n} players",
   "tournament.matches": "{n} matches",
   "tournament.processed":
@@ -85,6 +87,12 @@ const en = {
   "visits.week": "This week",
   "visits.month": "This month",
   "visits.year": "This year",
+  // Short forms — the four counters sit in one row on narrow phones.
+  "visits.todayShort": "Today",
+  "visits.weekShort": "Week",
+  "visits.monthShort": "Month",
+  "visits.yearShort": "Year",
+  "footer.feedback": "Send feedback",
 } as const
 
 export type TKey = keyof typeof en
@@ -98,6 +106,8 @@ const uk: Record<TKey, string> = {
   "form.calculate": "Розрахувати",
   "form.calculating": "Розраховуємо",
   "form.tryExample": "Спробуйте приклад:",
+  "form.clear": "Очистити",
+  "form.paste": "Вставити з буфера",
   "tournament.players": "Гравців: {n}",
   "tournament.matches": "Матчів: {n}",
   "tournament.processed":
@@ -160,6 +170,11 @@ const uk: Record<TKey, string> = {
   "visits.week": "Цей тиждень",
   "visits.month": "Цей місяць",
   "visits.year": "Цей рік",
+  "visits.todayShort": "Сьогодні",
+  "visits.weekShort": "Тиждень",
+  "visits.monthShort": "Місяць",
+  "visits.yearShort": "Рік",
+  "footer.feedback": "Надіслати фідбек",
 }
 
 const dict: Record<Locale, Record<TKey, string>> = { uk, en }

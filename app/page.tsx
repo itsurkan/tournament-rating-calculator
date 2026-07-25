@@ -11,11 +11,13 @@ import { useI18n, type TKey } from "@/lib/i18n"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Loader2, MapPin, Calendar, ChevronDown, ChevronRight, ExternalLink, Check, Pencil } from "lucide-react"
+import { Loader2, MapPin, Calendar, ChevronDown, ChevronRight, ExternalLink, Check, Pencil, X, MessageCircle, ClipboardPaste } from "lucide-react"
 import { VisitorsPanel } from "@/components/visitors-panel"
 
 const DEFAULT_RATING = 0 // provisional / unrated players start with no rating
-const EXAMPLE = "https://ligas.io/tournament/2el6ef/results"
+const EXAMPLE = "https://ligas.io/tournament/qg1jo4/results"
+// Feedback goes to Telegram: one tap on mobile, no mail client to configure.
+const FEEDBACK_URL = "https://t.me/Itsurkan"
 
 // The "Ligas · Рейтинг" brand mark — a table-tennis paddle glyph (bat + ball).
 function BrandMark() {
@@ -171,6 +173,28 @@ export default function Page() {
   function handleCalculate(e?: React.FormEvent) {
     e?.preventDefault()
     void runCalculate(url)
+  }
+
+  function focusUrlField() {
+    document.getElementById("tournament-url")?.focus()
+  }
+
+  function clearUrl() {
+    setUrl("")
+    focusUrlField()
+  }
+
+  // Paste the clipboard straight into the field. Reading the clipboard needs a
+  // user gesture and can still be refused (permission denied, http, older
+  // browsers) — in that case just focus the field so a manual paste works.
+  async function pasteUrl() {
+    try {
+      const text = await navigator.clipboard.readText()
+      if (text.trim()) setUrl(text.trim())
+    } catch {
+      // ignored — falls back to focusing the field below
+    }
+    focusUrlField()
   }
 
   // On first mount, restore the recents list for the panel. Only auto-load a
@@ -349,16 +373,29 @@ export default function Page() {
           {t("form.urlLabel")}
         </label>
         <div className="flex flex-col gap-3 sm:flex-row">
-          <Input
-            id="tournament-url"
-            type="url"
-            inputMode="url"
-            placeholder={EXAMPLE}
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            className="h-11 flex-1 font-mono text-sm"
-            aria-label={t("form.urlLabel")}
-          />
+          <div className="relative flex-1">
+            <Input
+              id="tournament-url"
+              type="url"
+              inputMode="url"
+              placeholder={EXAMPLE}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              className="h-11 w-full pr-10 font-mono text-sm"
+              aria-label={t("form.urlLabel")}
+            />
+            {/* One slot on the right of the field: paste when it is empty,
+                clear once there is something to clear. */}
+            <button
+              type="button"
+              onClick={url ? clearUrl : pasteUrl}
+              title={url ? t("form.clear") : t("form.paste")}
+              aria-label={url ? t("form.clear") : t("form.paste")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            >
+              {url ? <X className="size-4" /> : <ClipboardPaste className="size-4" />}
+            </button>
+          </div>
           <Button type="submit" disabled={loading || !url.trim()} className="h-11 px-6">
             {loading ? (
               <>
@@ -375,7 +412,7 @@ export default function Page() {
           <button
             type="button"
             onClick={() => setUrl(EXAMPLE)}
-            className="font-mono text-primary underline-offset-4 hover:underline"
+            className="max-w-full break-all text-left font-mono text-xs text-primary underline-offset-4 hover:underline sm:text-sm"
           >
             {EXAMPLE}
           </button>
@@ -622,15 +659,26 @@ export default function Page() {
       )}
 
       <VisitorsPanel />
-      <footer className="mt-16 border-t border-border pt-6 text-sm text-muted-foreground">
-        {t("footer.createdBy")} &middot;{" "}
+      <footer className="mt-6 flex flex-wrap items-center gap-x-2 gap-y-3 border-t border-border pt-4 text-sm text-muted-foreground sm:mt-8 sm:pt-5">
+        <span>
+          {t("footer.createdBy")} &middot;{" "}
+          <a
+            href="https://t.me/Itsurkan"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline-offset-4 hover:underline"
+          >
+            @Itsurkan
+          </a>
+        </span>
         <a
-          href="https://t.me/Itsurkan"
+          href={FEEDBACK_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-primary underline-offset-4 hover:underline"
+          className="inline-flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-foreground transition-colors hover:border-primary hover:text-primary"
         >
-          @Itsurkan
+          <MessageCircle className="size-3.5" aria-hidden />
+          {t("footer.feedback")}
         </a>
       </footer>
       </main>
