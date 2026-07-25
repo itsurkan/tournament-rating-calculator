@@ -12,7 +12,7 @@ export type VisitCounts = {
   year: number | null
 }
 
-const COUNTER_BASE = "https://abacus.jasoncameron.dev/hit"
+const COUNTER_BASE = "https://abacus.jasoncameron.dev"
 const DEFAULT_NAMESPACE = "tournament-rating-calc-itsurkan"
 const REQUEST_TIMEOUT_MS = 5000
 
@@ -55,11 +55,23 @@ export function periodKeys(date: Date) {
 // Increment one counter key and return its new value, or null on any failure
 // (network error, non-2xx, unexpected body) — a missing count is never an error.
 async function bump(key: string): Promise<number | null> {
+  return counter("hit", key)
+}
+
+// Read one counter key without incrementing it — used for visits that must not
+// be counted (local development). A key that was never hit yet 404s, which is
+// simply a count of 0.
+async function peek(key: string): Promise<number | null> {
+  return counter("get", key)
+}
+
+async function counter(op: "hit" | "get", key: string): Promise<number | null> {
   try {
-    const res = await fetch(`${COUNTER_BASE}/${namespace()}/${key}`, {
+    const res = await fetch(`${COUNTER_BASE}/${op}/${namespace()}/${key}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     })
+    if (res.status === 404 && op === "get") return 0
     if (!res.ok) return null
     const data: unknown = await res.json()
     const value = (data as { value?: unknown })?.value
@@ -78,6 +90,19 @@ export async function recordVisit(date: Date): Promise<VisitCounts> {
     bump(k.week),
     bump(k.month),
     bump(k.year),
+  ])
+  return { day, week, month, year }
+}
+
+// Same four counters, read without incrementing — the panel still shows real
+// numbers, but this visit is not added to them.
+export async function readVisits(date: Date): Promise<VisitCounts> {
+  const k = periodKeys(date)
+  const [day, week, month, year] = await Promise.all([
+    peek(k.day),
+    peek(k.week),
+    peek(k.month),
+    peek(k.year),
   ])
   return { day, week, month, year }
 }
