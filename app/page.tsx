@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react"
 import type { TournamentResponse } from "@/lib/types"
 import { calculateRatings, type Match, type PlayerInput } from "@/lib/rating"
+import { explainPlayer } from "@/lib/explain"
 import { ResultsTable } from "@/components/results-table"
 import { MatchesTable } from "@/components/matches-table"
+import { RatingExplainerDialog } from "@/components/rating-explainer"
 import { LanguageSwitcher } from "@/components/language-switcher"
 import { ThemeSwitcher } from "@/components/theme-switcher"
 import { useI18n, type TKey } from "@/lib/i18n"
@@ -97,6 +99,8 @@ export default function Page() {
   const [filterPlayerId, setFilterPlayerId] = useState("")
   const [tab, setTab] = useState("players")
   const [editing, setEditing] = useState(false)
+  // Player whose Δ pill was clicked — opens the rating-explainer dialog.
+  const [explainId, setExplainId] = useState<string | null>(null)
   const [recents, setRecents] = useState<RecentItem[]>([])
   const [recentsOpen, setRecentsOpen] = useState(false)
 
@@ -241,6 +245,17 @@ export default function Page() {
     }))
     return calculateRatings(players, matches, factor)
   }, [data, startRatings, factor])
+
+  const explanation = useMemo(
+    () => (result && explainId ? explainPlayer(result, explainId) : null),
+    [result, explainId],
+  )
+
+  // The same math block, but for the participant the matches tab is filtered to.
+  const filterExplanation = useMemo(
+    () => (result && filterPlayerId ? explainPlayer(result, filterPlayerId) : null),
+    [result, filterPlayerId],
+  )
 
   const filteredMatches = useMemo(() => {
     if (!result) return []
@@ -579,6 +594,7 @@ export default function Page() {
                 results={result.players}
                 startRatings={startRatings}
                 onRatingChange={setRating}
+                onExplain={setExplainId}
                 editing={editing}
                 profileUrls={Object.fromEntries(
                   data.players.map((p) => [p.id, p.profileUrl]),
@@ -652,9 +668,15 @@ export default function Page() {
                 matches={filteredMatches}
                 highlightId={filterPlayerId || undefined}
                 profileUrls={matchProfileUrls}
+                explanation={filterExplanation}
               />
             </TabsContent>
           </Tabs>
+
+          <RatingExplainerDialog
+            exp={explanation}
+            onClose={() => setExplainId(null)}
+          />
         </section>
       )}
 

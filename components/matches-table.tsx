@@ -3,6 +3,8 @@
 import { useState } from "react"
 import { ChevronDown } from "lucide-react"
 import type { MatchContribution } from "@/lib/rating"
+import type { RatingExplanation } from "@/lib/explain"
+import { RatingBreakdown } from "@/components/rating-explainer"
 import { useI18n } from "@/lib/i18n"
 import {
   Table,
@@ -87,12 +89,16 @@ function FirstPersonMatches({
   matches,
   highlightId,
   profileUrls,
+  explanation,
 }: {
   matches: MatchContribution[]
   highlightId: string
   profileUrls: Record<string, string | null>
+  explanation?: RatingExplanation | null
 }) {
   const { t } = useI18n()
+  // The rating math under the total row is opt-in — collapsed until expanded.
+  const [showMath, setShowMath] = useState(false)
   const rows = matches.map((m, i) => {
     const won = m.winnerId === highlightId
     const oppId = won ? m.loserId : m.winnerId
@@ -169,6 +175,28 @@ function FirstPersonMatches({
           </TableRow>
         </TableFooter>
       </Table>
+      {/* How the total above becomes the rating delta — same math as the
+          Δ-pill explainer dialog, behind an expander. */}
+      {explanation && (
+        <div className="border-t border-border">
+          <button
+            type="button"
+            onClick={() => setShowMath((v) => !v)}
+            aria-expanded={showMath}
+            className="flex w-full items-center justify-center gap-1.5 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {t("explain.title")}
+            <ChevronDown
+              className={`size-4 transition-transform ${showMath ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showMath && (
+            <div className="border-t border-border bg-muted/40 p-3.5">
+              <RatingBreakdown exp={explanation} />
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -177,10 +205,13 @@ export function MatchesTable({
   matches,
   highlightId,
   profileUrls = {},
+  explanation,
 }: {
   matches: MatchContribution[]
   highlightId?: string
   profileUrls?: Record<string, string | null>
+  /** Rating math for the filtered participant, shown under the total row. */
+  explanation?: RatingExplanation | null
 }) {
   // Filtered to a single participant → show the design's first-person layout.
   if (highlightId) {
@@ -189,6 +220,7 @@ export function MatchesTable({
         matches={matches}
         highlightId={highlightId}
         profileUrls={profileUrls}
+        explanation={explanation}
       />
     )
   }

@@ -11,6 +11,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { Info } from "lucide-react"
 import { Fragment, useEffect, useState } from "react"
 
 function RatingInput({
@@ -51,23 +52,36 @@ function RatingInput({
 }
 
 // Δ pill (colored fill + border), matching the design's rating-change badge.
-// Zero is a quiet dash.
-function DeltaPill({ change }: { change: number }) {
-  if (Math.abs(change) < 0.05) {
-    return <span className="font-mono text-xs text-muted-foreground">0.0</span>
-  }
+// Zero is a quiet pill. Clicking it opens the rating explainer, so the pill is
+// a button with an ⓘ affordance and a hover ring.
+function DeltaPill({
+  change,
+  onClick,
+  ariaLabel,
+}: {
+  change: number
+  onClick: () => void
+  ariaLabel: string
+}) {
+  const zero = Math.abs(change) < 0.05
   const up = change > 0
+  const tone = zero
+    ? "border-border bg-muted/40 text-muted-foreground"
+    : up
+      ? "border-positive/30 bg-positive/15 text-positive"
+      : "border-negative/30 bg-negative/15 text-negative"
   return (
-    <span
-      className={`inline-flex rounded-md border px-2 py-1 font-mono text-xs font-semibold ${
-        up
-          ? "border-positive/30 bg-positive/15 text-positive"
-          : "border-negative/30 bg-negative/15 text-negative"
-      }`}
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={ariaLabel}
+      title={ariaLabel}
+      className={`inline-flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 font-mono text-xs font-semibold transition-shadow hover:ring-1 hover:ring-primary/50 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${tone}`}
     >
-      {up ? "+" : ""}
+      {!zero && up ? "+" : ""}
       {change.toFixed(1)}
-    </span>
+      <Info className="size-3 opacity-60" aria-hidden />
+    </button>
   )
 }
 
@@ -97,12 +111,15 @@ export function ResultsTable({
   results,
   startRatings,
   onRatingChange,
+  onExplain,
   profileUrls = {},
   editing = false,
 }: {
   results: PlayerResult[]
   startRatings: Record<string, number>
   onRatingChange: (id: string, value: number) => void
+  /** Open the rating explainer for a player (click on the Δ pill). */
+  onExplain: (id: string) => void
   profileUrls?: Record<string, string | null>
   editing?: boolean
 }) {
@@ -140,19 +157,24 @@ export function ResultsTable({
                 ariaLabel={t("results.startRatingFor", { name: p.name })}
               />
             </div>
-            <span className="text-right font-mono text-sm font-semibold">
-              <span
-                className={
+            <span className="flex justify-end">
+              <button
+                type="button"
+                onClick={() => onExplain(p.id)}
+                aria-label={t("explain.aria", { name: p.name })}
+                title={t("explain.aria", { name: p.name })}
+                className={`inline-flex cursor-pointer items-center gap-1 rounded-md px-1 py-0.5 font-mono text-sm font-semibold transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring ${
                   p.change > 0.05
                     ? "text-positive"
                     : p.change < -0.05
                       ? "text-negative"
                       : "text-muted-foreground"
-                }
+                }`}
               >
                 {p.change > 0.05 ? "+" : ""}
                 {p.change.toFixed(1)}
-              </span>
+                <Info className="size-3 opacity-60" aria-hidden />
+              </button>
             </span>
           </div>
         ))}
@@ -207,7 +229,11 @@ export function ResultsTable({
                 </span>
               </div>
               <div className={`${b} flex items-center justify-end py-3 pl-2 pr-3`}>
-                <DeltaPill change={p.change} />
+                <DeltaPill
+                  change={p.change}
+                  onClick={() => onExplain(p.id)}
+                  ariaLabel={t("explain.aria", { name: p.name })}
+                />
               </div>
             </Fragment>
           )
@@ -255,7 +281,11 @@ export function ResultsTable({
                   </TableCell>
                   <TableCell className="text-right">
                     <span className="inline-flex justify-end">
-                      <DeltaPill change={p.change} />
+                      <DeltaPill
+                        change={p.change}
+                        onClick={() => onExplain(p.id)}
+                        ariaLabel={t("explain.aria", { name: p.name })}
+                      />
                     </span>
                   </TableCell>
                 </TableRow>
