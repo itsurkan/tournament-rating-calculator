@@ -1,18 +1,83 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { decayWeight } from "@/lib/rating"
+import {
+  type HistoryEntry,
+  monthBoundariesBetween,
+  parseMatches,
+  pickLatestEntry,
+} from "@/lib/ligas-history"
 
 const LIGAS = "https://ligas.io/api"
 
-// Calendar-month boundaries crossed between two ISO dates (UTC). Ligas decays
-// weight once per boundary — see decayWeight in lib/rating.ts.
-function monthBoundariesBetween(fromIso?: string | null, toIso?: string | null): number {
-  if (!fromIso || !toIso) return 0
-  const a = new Date(fromIso)
-  const b = new Date(toIso)
-  if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return 0
-  const diff =
-    (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + (b.getUTCMonth() - a.getUTCMonth())
-  return Math.max(0, diff)
+// ligas.io drops part of any request burst with HTTP 503: firing all ~36 player
+// lookups of a 12-player tournament at once loses ~11 of them (measured
+// 2026-09-10). Those lookups are the players' ratings, so a dropped one used to
+// silently turn a 25.4-rated player into a novice. Requests are therefore run
+// through a small concurrency gate and retried with backoff on 429 / 5xx /
+// network errors.
+const MAX_CONCURRENT = 5
+const MAX_ATTEMPTS = 4
+const RETRY_BASE_MS = 300
+
+let inFlight = 0
+const waiters: Array<() => void> = []
+async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (inFlight >= MAX_CONCURRENT) {
+    await new Promise<void>((resolve) => waiters.push(resolve))
+  }
+  inFlight++
+  try {
+    return await fn()
+  } finally {
+    inFlight--
+    waiters.shift()?.()
+  }
+}
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+class LigasError extends Error {
+  constructor(
+    message: string,
+    readonly status: number | null,
+  ) {
+    super(message)
+  }
+}
+
+const retryable = (status: number | null) => status === null || status === 429 || status >= 500
+
+// Fetch a ligas JSON endpoint. Resolves to null on 404 when `allow404` is set;
+// every other failure (after retries) throws, so the caller can't accidentally
+// compute a result from missing data.
+async function getJson(url: string, opts: { allow404?: boolean } = {}): Promise<any> {
+  return withSlot(async () => {
+    let lastErr: LigasError | null = null
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      let res: Response
+      try {
+        res = await fetch(url, {
+          headers: { accept: "application/json" },
+          // Always fetch ligas fresh when the route actually runs. The 15-min
+          // CDN cache on the computed result (see GET below) is the single
+          // staleness gate and already throttles route execution to ~once per
+          // 15 min per tournament, so this never hammers ligas — and it
+          // guarantees the data is never stacked behind a second cache layer.
+          cache: "no-store",
+        })
+      } catch (err) {
+        lastErr = new LigasError(`ligas network error for ${url}: ${(err as Error).message}`, null)
+        await sleep(RETRY_BASE_MS * 2 ** (attempt - 1))
+        continue
+      }
+      if (res.ok) return res.json()
+      if (res.status === 404 && opts.allow404) return null
+      lastErr = new LigasError(`ligas ${res.status} for ${url}`, res.status)
+      if (!retryable(res.status)) break
+      await sleep(RETRY_BASE_MS * 2 ** (attempt - 1))
+    }
+    throw lastErr ?? new LigasError(`ligas request failed for ${url}`, null)
+  })
 }
 
 // Extract the short tournament id from any ligas.io tournament URL or a raw id.
@@ -25,20 +90,6 @@ function parseTournamentId(input: string): string | null {
   // Allow passing a bare id.
   if (/^[a-z0-9]{4,12}$/i.test(trimmed)) return trimmed
   return null
-}
-
-async function getJson(url: string) {
-  const res = await fetch(url, {
-    headers: { accept: "application/json" },
-    // Always fetch ligas fresh when the route actually runs. The 15-min CDN
-    // cache on the computed result (see GET below) is the single staleness gate
-    // and already throttles route execution to ~once per 15 min per tournament,
-    // so this never hammers ligas — and it guarantees the data is never stacked
-    // behind a second cache layer (which could push it past 15 min old).
-    cache: "no-store",
-  })
-  if (!res.ok) throw new Error(`ligas ${res.status} for ${url}`)
-  return res.json()
 }
 
 function asArray(data: unknown): any[] {
@@ -88,11 +139,15 @@ type Snapshot = {
 //     it — use the PRE-tournament values it actually used, so we can reproduce
 //     ligas' official result instead of double-counting the event.
 //   - Otherwise the tournament is unprocessed: use the player's CURRENT rating,
-//     i.e. the `final`/`finalWeight` of their most recent history entry — with
-//     the finalWeight DECAYED once per calendar-month boundary between that
-//     entry and the tournament date (ligas applies the same decay before
-//     processing; without it predictions drift, e.g. Квасніцький in 4vfczq
-//     predicted +0.6 with stale weight 11 vs official +0.7 with decayed 10).
+//     i.e. the `final`/`finalWeight` of their most recent history entry (see
+//     pickLatestEntry for the same-day tie-break) — with the finalWeight DECAYED
+//     once per calendar-month boundary between that entry and the tournament
+//     date (ligas applies the same decay before processing; without it
+//     predictions drift, e.g. Квасніцький in 4vfczq predicted +0.6 with stale
+//     weight 11 vs official +0.7 with decayed 10).
+//
+// A player absent from a ranking gets an empty list from ligas (HTTP 200), so
+// any thrown error here is a real fetch failure and must propagate.
 async function readSnapshot(
   alias: string,
   rankings: Ranking[],
@@ -101,17 +156,14 @@ async function readSnapshot(
   tournamentStart: string | null,
 ): Promise<Snapshot | null> {
   // Keep each entry tagged with the ranking it came from (men / women / ...).
-  const entries: Array<any & { _rankingAlias: string | null }> = []
+  type Tagged = HistoryEntry & { _rankingAlias: string | null }
+  const entries: Tagged[] = []
   await Promise.all(
     rankings.map(async (r) => {
-      try {
-        const hist = asArray(
-          await getJson(`${LIGAS}/organizations/${alias}/rankings/${r.shortId}/participants/${pid}`),
-        )
-        for (const e of hist) entries.push({ ...e, _rankingAlias: r.alias })
-      } catch {
-        // player not in this ranking — ignore
-      }
+      const hist = asArray(
+        await getJson(`${LIGAS}/organizations/${alias}/rankings/${r.shortId}/participants/${pid}`),
+      )
+      for (const e of hist) entries.push({ ...e, _rankingAlias: r.alias })
     }),
   )
   if (entries.length === 0) return null
@@ -127,20 +179,16 @@ async function readSnapshot(
   }
 
   // Current rating = the most recent history entry's post-tournament value.
-  const entryTime = (e: any) => Date.parse(e?.actualDate ?? e?.date ?? "") || 0
-  let latest: any = entries[0]
-  for (const e of entries) {
-    if (entryTime(e) >= entryTime(latest)) latest = e
-  }
+  const latest = pickLatestEntry(entries)!
   const boundaries = monthBoundariesBetween(
-    latest?.actualDate ?? latest?.date ?? null,
+    latest.actualDate ?? latest.date ?? null,
     tournamentStart,
   )
   return {
-    rating: num(latest?.final),
-    weight: decayWeight(num(latest?.finalWeight) ?? 0, boundaries),
+    rating: num(latest.final),
+    weight: decayWeight(num(latest.finalWeight) ?? 0, boundaries),
     processed: false,
-    rankingAlias: latest?._rankingAlias ?? null,
+    rankingAlias: latest._rankingAlias ?? null,
   }
 }
 
@@ -183,35 +231,31 @@ export async function GET(req: NextRequest) {
 
     // Rankings for this org (e.g. men / women) — used to look up each player's
     // pre-tournament rating/weight and to build their profile link.
-    const rankings: Ranking[] = asArray(
-      await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`).catch(() => []),
-    )
+    const rankings: Ranking[] = asArray(await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`))
       .map((r: any) => ({ shortId: r?.shortId, alias: r?.alias ?? null }))
       .filter((r): r is Ranking => typeof r.shortId === "string")
 
     // For each player, resolve the rating + weight they bring into this
     // tournament: pre-tournament values if ligas already processed it, otherwise
-    // their current rating (latest history entry).
+    // their current rating (latest history entry). A lookup that still fails
+    // after retries aborts the whole request (→ 502) rather than quietly
+    // treating the player as unrated, which would make every result wrong.
     const ratings = await Promise.all(
       playerIds.map(async (pid) => {
-        try {
-          const [profile, snap] = await Promise.all([
-            getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`).catch(() => null),
-            readSnapshot(orgAlias, rankings, pid, id, tournament?.start ?? null),
-          ])
-          // Use the snapshot (pre-tournament `initial` if processed, else the
-          // latest history `final`). Fall back to the live profile ranking only
-          // when the player has no ranking history at all.
-          const rating = snap ? snap.rating : readRanking(profile)
-          return {
-            id: pid,
-            ranking: rating != null && rating > 0 ? rating : null,
-            weight: snap?.weight ?? 0,
-            processed: snap?.processed ?? false,
-            rankingAlias: snap?.rankingAlias ?? null,
-          }
-        } catch {
-          return { id: pid, ranking: null, weight: 0, processed: false, rankingAlias: null }
+        const [profile, snap] = await Promise.all([
+          getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`, { allow404: true }),
+          readSnapshot(orgAlias, rankings, pid, id, tournament?.start ?? null),
+        ])
+        // Use the snapshot (pre-tournament `initial` if processed, else the
+        // latest history `final`). Fall back to the live profile ranking only
+        // when the player has no ranking history at all.
+        const rating = snap ? snap.rating : readRanking(profile)
+        return {
+          id: pid,
+          ranking: rating != null && rating > 0 ? rating : null,
+          weight: snap?.weight ?? 0,
+          processed: snap?.processed ?? false,
+          rankingAlias: snap?.rankingAlias ?? null,
         }
       }),
     )
@@ -239,31 +283,8 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // Parse finished games into directional matches (winner / loser).
-    // result is "p1:p2"; ignore byes / unplayed / 0:0 entries.
-    const matches = games
-      .map((g) => {
-        const result: string = g?.result ?? ""
-        const m = result.match(/^(\d+)\s*:\s*(\d+)$/)
-        if (!m) return null
-        const s1 = Number(m[1])
-        const s2 = Number(m[2])
-        if (s1 === s2) return null // not a decided match
-        const p1 = g?.participant1
-        const p2 = g?.participant2
-        if (!p1 || !p2) return null
-        const winnerId = s1 > s2 ? p1 : p2
-        const loserId = s1 > s2 ? p2 : p1
-        const scoreFromWinner = s1 > s2 ? `${s1}:${s2}` : `${s2}:${s1}`
-        return {
-          gameId: g?.id ?? `${p1}-${p2}`,
-          stageName: g?.stageName ?? "",
-          winnerId,
-          loserId,
-          score: scoreFromWinner,
-        }
-      })
-      .filter((x): x is NonNullable<typeof x> => x !== null)
+    // Played, decided games only — walkovers / byes ("0:0") are not rated.
+    const matches = parseMatches(games)
 
     return NextResponse.json(
       {
