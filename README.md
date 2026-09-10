@@ -46,3 +46,27 @@ required** — it works out of the box on Vercel.
   preview/staging counts separate from production). Defaults to a built-in name.
 
 Counts are total page loads per UTC calendar period (no unique-visitor dedup).
+
+## Ligas cache and the `/admin` page
+
+`/api/tournament` fetches tournament games fresh on every load, but caches each
+player's rating history / profile (default 3 h) and the org ranking list
+(default 6 h) in Next's data cache, so a live tournament recalculates instantly
+without re-fetching ~40 player lookups from ligas each time.
+
+`/admin` lets you change those TTLs and clear the cache **without a redeploy**.
+It is off until you set:
+
+- `ADMIN_TOKEN` — a long random secret; the page asks for it and sends it as a
+  bearer token. Required for anything on `/admin`. "Clear cache" needs nothing else.
+
+To make the TTLs editable (they are read-only otherwise):
+
+1. In the Vercel dashboard, Storage → create an **Edge Config** store and connect
+   it to this project. That sets `EDGE_CONFIG` automatically.
+2. Add `EDGE_CONFIG_ID` (the store id, `ecfg_…`) and `VERCEL_API_TOKEN` (Account
+   → Tokens; scope it to this project) — plus `VERCEL_TEAM_ID` if the project
+   lives in a team.
+
+Saved TTLs apply to lookups from then on; players cached earlier keep their old
+expiry until they expire or you press "Clear ligas cache".
