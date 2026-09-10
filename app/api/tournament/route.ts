@@ -19,6 +19,26 @@ const MAX_CONCURRENT = 5
 const MAX_ATTEMPTS = 4
 const RETRY_BASE_MS = 300
 
+// Ligas data is cached by how fast it changes, so a live tournament can be
+// recalculated on every load without re-fetching every player:
+//
+//   - tournament / games / standing change every few minutes while an event is
+//     being played and cost 3 requests → always fetched fresh;
+//   - a player's ranking history (their rating + weight) only changes when
+//     ligas processes a tournament, but costs players × (rankings + 1)
+//     requests — the burst that used to trip ligas' 503 throttling → cached in
+//     Next's shared data cache (persisted on Vercel across instances) for
+//     PLAYER_TTL_S; the org's ranking list is even more static.
+//
+// The rating model runs over a FIXED pre-tournament snapshot (see lib/rating.ts),
+// so recomputing fresh games against a cached snapshot is exactly the official
+// calculation — nothing drifts. The only lag left is the flip from "predicted"
+// to "official" once ligas processes the event, bounded by PLAYER_TTL_S. A
+// player's rating rarely changes more than once a day (one tournament, then a
+// processing pass), so 3 h keeps ligas traffic to a handful of calls per load.
+const PLAYER_TTL_S = 3 * 3600
+const RANKINGS_TTL_S = 6 * 3600
+
 let inFlight = 0
 const waiters: Array<() => void> = []
 async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
@@ -47,24 +67,27 @@ class LigasError extends Error {
 
 const retryable = (status: number | null) => status === null || status === 429 || status >= 500
 
+type GetJsonOpts = {
+  allow404?: boolean
+  /**
+   * Seconds to keep the response in Next's data cache. Omit for always-fresh
+   * (`no-store`). Next only stores 200 responses, so a 404 / 5xx never sticks.
+   */
+  revalidate?: number
+}
+
 // Fetch a ligas JSON endpoint. Resolves to null on 404 when `allow404` is set;
 // every other failure (after retries) throws, so the caller can't accidentally
 // compute a result from missing data.
-async function getJson(url: string, opts: { allow404?: boolean } = {}): Promise<any> {
+async function getJson(url: string, opts: GetJsonOpts = {}): Promise<any> {
+  const cacheInit: RequestInit =
+    opts.revalidate != null ? { next: { revalidate: opts.revalidate } } : { cache: "no-store" }
   return withSlot(async () => {
     let lastErr: LigasError | null = null
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       let res: Response
       try {
-        res = await fetch(url, {
-          headers: { accept: "application/json" },
-          // Always fetch ligas fresh when the route actually runs. The 15-min
-          // CDN cache on the computed result (see GET below) is the single
-          // staleness gate and already throttles route execution to ~once per
-          // 15 min per tournament, so this never hammers ligas — and it
-          // guarantees the data is never stacked behind a second cache layer.
-          cache: "no-store",
-        })
+        res = await fetch(url, { headers: { accept: "application/json" }, ...cacheInit })
       } catch (err) {
         lastErr = new LigasError(`ligas network error for ${url}: ${(err as Error).message}`, null)
         await sleep(RETRY_BASE_MS * 2 ** (attempt - 1))
@@ -161,7 +184,9 @@ async function readSnapshot(
   await Promise.all(
     rankings.map(async (r) => {
       const hist = asArray(
-        await getJson(`${LIGAS}/organizations/${alias}/rankings/${r.shortId}/participants/${pid}`),
+        await getJson(`${LIGAS}/organizations/${alias}/rankings/${r.shortId}/participants/${pid}`, {
+          revalidate: PLAYER_TTL_S,
+        }),
       )
       for (const e of hist) entries.push({ ...e, _rankingAlias: r.alias })
     }),
@@ -192,7 +217,7 @@ async function readSnapshot(
   }
 }
 
-// GET (not POST) so Vercel's CDN can cache the whole computed result per
+// GET (not POST) so Vercel's CDN can coalesce simultaneous loads of the same
 // tournament. The `id` param accepts a full ligas.io URL or a bare short id.
 export async function GET(req: NextRequest) {
   try {
@@ -204,6 +229,7 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    // Live data — always fresh so newly played games show up immediately.
     const [tournament, gamesRaw, standingRaw] = await Promise.all([
       getJson(`${LIGAS}/tournaments/${id}`),
       getJson(`${LIGAS}/tournaments/${id}/games`),
@@ -231,7 +257,9 @@ export async function GET(req: NextRequest) {
 
     // Rankings for this org (e.g. men / women) — used to look up each player's
     // pre-tournament rating/weight and to build their profile link.
-    const rankings: Ranking[] = asArray(await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`))
+    const rankings: Ranking[] = asArray(
+      await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`, { revalidate: RANKINGS_TTL_S }),
+    )
       .map((r: any) => ({ shortId: r?.shortId, alias: r?.alias ?? null }))
       .filter((r): r is Ranking => typeof r.shortId === "string")
 
@@ -243,7 +271,10 @@ export async function GET(req: NextRequest) {
     const ratings = await Promise.all(
       playerIds.map(async (pid) => {
         const [profile, snap] = await Promise.all([
-          getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`, { allow404: true }),
+          getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`, {
+            allow404: true,
+            revalidate: PLAYER_TTL_S,
+          }),
           readSnapshot(orgAlias, rankings, pid, id, tournament?.start ?? null),
         ])
         // Use the snapshot (pre-tournament `initial` if processed, else the
@@ -303,11 +334,13 @@ export async function GET(req: NextRequest) {
         matches,
       },
       {
-        // Cache the computed result at Vercel's edge for 15 min, then do a
-        // blocking revalidation — never serve a stale result. This bounds how
-        // old the data can be to ~15 min, matching the upstream ligas cache.
+        // Short edge cache: a room full of people refreshing during a live
+        // event collapses into one route run per 30 s (served stale for up to
+        // another 60 s while it revalidates in the background). Freshness of
+        // the player ratings is bounded by PLAYER_TTL_S in the data cache, not
+        // here. `max-age=0` keeps the browser itself from caching.
         headers: {
-          "cache-control": "public, s-maxage=900, must-revalidate",
+          "cache-control": "public, max-age=0, s-maxage=30, stale-while-revalidate=60",
         },
       },
     )
