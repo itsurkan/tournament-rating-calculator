@@ -6,6 +6,7 @@ import {
   parseMatches,
   pickLatestEntry,
 } from "@/lib/ligas-history"
+import { type CacheConfig, LIGAS_TAGS, readCacheConfig } from "@/lib/cache-config"
 
 const LIGAS = "https://ligas.io/api"
 
@@ -28,16 +29,15 @@ const RETRY_BASE_MS = 300
 //     ligas processes a tournament, but costs players × (rankings + 1)
 //     requests — the burst that used to trip ligas' 503 throttling → cached in
 //     Next's shared data cache (persisted on Vercel across instances) for
-//     PLAYER_TTL_S; the org's ranking list is even more static.
+//     `playerTtlS`; the org's ranking list is even more static.
 //
 // The rating model runs over a FIXED pre-tournament snapshot (see lib/rating.ts),
 // so recomputing fresh games against a cached snapshot is exactly the official
 // calculation — nothing drifts. The only lag left is the flip from "predicted"
-// to "official" once ligas processes the event, bounded by PLAYER_TTL_S. A
-// player's rating rarely changes more than once a day (one tournament, then a
-// processing pass), so 3 h keeps ligas traffic to a handful of calls per load.
-const PLAYER_TTL_S = 3 * 3600
-const RANKINGS_TTL_S = 6 * 3600
+// to "official" once ligas processes the event, bounded by `playerTtlS`.
+//
+// The TTLs live in lib/cache-config.ts (defaults 3 h / 6 h) and can be changed
+// at runtime from /admin, which can also purge the tagged entries outright.
 
 let inFlight = 0
 const waiters: Array<() => void> = []
@@ -74,6 +74,8 @@ type GetJsonOpts = {
    * (`no-store`). Next only stores 200 responses, so a 404 / 5xx never sticks.
    */
   revalidate?: number
+  /** Cache tag, so /admin can purge the entry with revalidateTag. */
+  tag?: string
 }
 
 // Fetch a ligas JSON endpoint. Resolves to null on 404 when `allow404` is set;
@@ -81,7 +83,9 @@ type GetJsonOpts = {
 // compute a result from missing data.
 async function getJson(url: string, opts: GetJsonOpts = {}): Promise<any> {
   const cacheInit: RequestInit =
-    opts.revalidate != null ? { next: { revalidate: opts.revalidate } } : { cache: "no-store" }
+    opts.revalidate != null
+      ? { next: { revalidate: opts.revalidate, tags: opts.tag ? [opts.tag] : undefined } }
+      : { cache: "no-store" }
   return withSlot(async () => {
     let lastErr: LigasError | null = null
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -177,6 +181,7 @@ async function readSnapshot(
   pid: string,
   tournamentId: string,
   tournamentStart: string | null,
+  cache: CacheConfig,
 ): Promise<Snapshot | null> {
   // Keep each entry tagged with the ranking it came from (men / women / ...).
   type Tagged = HistoryEntry & { _rankingAlias: string | null }
@@ -185,7 +190,8 @@ async function readSnapshot(
     rankings.map(async (r) => {
       const hist = asArray(
         await getJson(`${LIGAS}/organizations/${alias}/rankings/${r.shortId}/participants/${pid}`, {
-          revalidate: PLAYER_TTL_S,
+          revalidate: cache.playerTtlS,
+          tag: LIGAS_TAGS.player,
         }),
       )
       for (const e of hist) entries.push({ ...e, _rankingAlias: r.alias })
@@ -229,6 +235,8 @@ export async function GET(req: NextRequest) {
       )
     }
 
+    const { config: cache } = await readCacheConfig()
+
     // Live data — always fresh so newly played games show up immediately.
     const [tournament, gamesRaw, standingRaw] = await Promise.all([
       getJson(`${LIGAS}/tournaments/${id}`),
@@ -258,7 +266,10 @@ export async function GET(req: NextRequest) {
     // Rankings for this org (e.g. men / women) — used to look up each player's
     // pre-tournament rating/weight and to build their profile link.
     const rankings: Ranking[] = asArray(
-      await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`, { revalidate: RANKINGS_TTL_S }),
+      await getJson(`${LIGAS}/organizations/${orgAlias}/rankings`, {
+        revalidate: cache.rankingsTtlS,
+        tag: LIGAS_TAGS.rankings,
+      }),
     )
       .map((r: any) => ({ shortId: r?.shortId, alias: r?.alias ?? null }))
       .filter((r): r is Ranking => typeof r.shortId === "string")
@@ -273,9 +284,10 @@ export async function GET(req: NextRequest) {
         const [profile, snap] = await Promise.all([
           getJson(`${LIGAS}/organizations/${orgAlias}/users/${pid}`, {
             allow404: true,
-            revalidate: PLAYER_TTL_S,
+            revalidate: cache.playerTtlS,
+            tag: LIGAS_TAGS.player,
           }),
-          readSnapshot(orgAlias, rankings, pid, id, tournament?.start ?? null),
+          readSnapshot(orgAlias, rankings, pid, id, tournament?.start ?? null, cache),
         ])
         // Use the snapshot (pre-tournament `initial` if processed, else the
         // latest history `final`). Fall back to the live profile ranking only
@@ -337,7 +349,7 @@ export async function GET(req: NextRequest) {
         // Short edge cache: a room full of people refreshing during a live
         // event collapses into one route run per 30 s (served stale for up to
         // another 60 s while it revalidates in the background). Freshness of
-        // the player ratings is bounded by PLAYER_TTL_S in the data cache, not
+        // the player ratings is bounded by `playerTtlS` in the data cache, not
         // here. `max-age=0` keeps the browser itself from caching.
         headers: {
           "cache-control": "public, max-age=0, s-maxage=30, stale-while-revalidate=60",
