@@ -58,6 +58,17 @@ Let `myR` = my rating, `oppR` = opponent rating.
 **Unrated rule (both directions):** any match against an unrated (≤ 0) player
 scores **0** — beating one, losing to one, and being unrated yourself.
 
+**Unconfirmed opponents (asymmetric):** for the **win** branch, "unrated" means
+*arrived without a confirmed rating* (`rating ≤ 0` **before** the tournament).
+A новачок who earns an опорний only inside this event still pays **0** to
+whoever beats them. The **loss** branch does use that опорний — losing to a
+новачок hurts (see §4). A player ligas has already processed as a новачок
+carries the опорний as a stored rating (> 0, weight 0) and counts as confirmed
+— required by `cnftij`, where beating Філіп (0.2, weight 0) officially scores
++1. Regression: `lib/__tests__/rating.unconfirmed-opponent.test.ts` (reported on
+`6xdwtk`: two wins over a новачок valued 2.1 gave −4 instead of the official
+−6).
+
 ---
 
 ## 3. Опорний (base rating) derivation
@@ -92,6 +103,9 @@ values are recomputed until they stop changing.
 
 > Verified against ligas `laij93`: reproducing the official results requires this
 > rule (e.g. a 5.3-rated player loses **−3** to a 0.6 opponent there).
+
+The rule is **one-directional**: it prices *losses* to a provisional player, not
+*wins* over them — see the "unconfirmed opponents" note in §2.
 
 ---
 
