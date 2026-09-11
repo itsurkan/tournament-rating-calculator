@@ -59,10 +59,18 @@ export type RatingExplanation = {
   zeroWeight: boolean
 }
 
-// The reason for a contribution — same branch order as contribution().
-function matchReason(my: number, opp: number, won: boolean): MatchReason {
+// The reason for a contribution — same branch order as contribution(), with the
+// same asymmetric opponent valuation: a win over a player who arrived without a
+// confirmed rating scores 0 even when they earned an опорний in this tournament
+// (`oppUnconfirmed`), while a loss to them is priced at that опорний.
+function matchReason(
+  my: number,
+  opp: number,
+  won: boolean,
+  oppUnconfirmed = false,
+): MatchReason {
   if (won) {
-    if (opp <= 0) return "beatUnrated"
+    if (oppUnconfirmed || opp <= 0) return "beatUnrated"
     if (my >= opp) {
       const gap = my - opp
       if (gap <= 2) return "beatClose"
@@ -109,7 +117,12 @@ export function explainPlayer(
       score: won ? m.score : b && a ? `${b.trim()}:${a.trim()}` : m.score,
       stageName: m.stageName,
       points: won ? m.winnerPoints : m.loserPoints,
-      reason: matchReason(player.ratingBefore, oppRating, won),
+      reason: matchReason(
+        player.ratingBefore,
+        oppRating,
+        won,
+        won ? m.loserUnconfirmed : m.winnerUnconfirmed,
+      ),
     })
   }
 

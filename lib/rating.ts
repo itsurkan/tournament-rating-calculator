@@ -25,7 +25,11 @@
 //        - Lost to a stronger opponent      -> -2 (gap <= 2), -1 (gap <= 20), else 0
 //        - Lost to a weaker opponent        -> -round((myR - oppR + 5) / 3)
 //        - Any match against an unrated (<= 0) player scores 0 — beating one,
-//          losing to one, and being unrated yourself all give 0.
+//          losing to one, and being unrated yourself all give 0. "Unrated" for
+//          the WIN branch means "arrived without a confirmed rating": a новачок
+//          who earns an опорний only inside this tournament still pays 0 to
+//          whoever beats them. The LOSS branch does use that опорний (losing to
+//          a новачок hurts) — see opponentValue().
 //      Contributions always use PRE-tournament ratings (a fixed snapshot).
 //
 //   2. contestWeight = min(20, sum of |contribution|)          (games played, capped)
@@ -106,6 +110,9 @@ export type MatchContribution = {
   score: string
   winnerRatingBefore: number
   loserRatingBefore: number
+  /** True when that side arrived without a confirmed pre-tournament rating. */
+  winnerUnconfirmed: boolean
+  loserUnconfirmed: boolean
   /** Integer points the winner earned from this match (>= 0). */
   winnerPoints: number
   /** Integer points the loser earned from this match (<= 0). */
@@ -259,6 +266,25 @@ export function calculateRatings(
     if (!changed) break
   }
 
+  // What an opponent is WORTH in one match. Asymmetric on purpose:
+  //
+  //   - losing to them prices them at their in-tournament опорний (verified on
+  //     laij93: a 5.3 player loses -3 to a 0.6 новачок);
+  //   - beating them pays 0 when they arrived with no confirmed rating, even if
+  //     they earned an опорний here. Points are only awarded for beating a
+  //     player ligas already ranks — the same rule as `oppR <= 0` in
+  //     contribution(), applied to the pre-tournament rating rather than to the
+  //     опорний we derive for them.
+  //
+  // A player ligas has already processed as a новачок carries their опорний as
+  // a stored rating (> 0, weight 0) and counts as confirmed — required by
+  // cnftij, where beating Філіп (0.2, weight 0) officially scores +1.
+  const opponentValue = (oppId: string, iWon: boolean): number => {
+    const opp = byId.get(oppId)
+    if (iWon && opp && opp.rating <= 0) return 0
+    return effRating.get(oppId) ?? 0
+  }
+
   const playerResults: PlayerResult[] = players.map((p) => {
     const initialRating = effRating.get(p.id)!
     const initialWeight = effWeight.get(p.id)!
@@ -266,7 +292,7 @@ export function calculateRatings(
     let sumContribution = 0
     let sumAbs = 0
     for (const o of perPlayer.get(p.id)!) {
-      const c = contribution(initialRating, effRating.get(o.oppId) ?? 0, o.iWon)
+      const c = contribution(initialRating, opponentValue(o.oppId, o.iWon), o.iWon)
       sumContribution += c
       sumAbs += Math.abs(c)
     }
@@ -338,8 +364,10 @@ export function calculateRatings(
         loserName: byId.get(m.loserId)!.name,
         winnerRatingBefore: roundRating(wRef),
         loserRatingBefore: roundRating(lRef),
-        winnerPoints: contribution(wRef, lRef, true),
-        loserPoints: contribution(lRef, wRef, false),
+        winnerUnconfirmed: byId.get(m.winnerId)!.rating <= 0,
+        loserUnconfirmed: byId.get(m.loserId)!.rating <= 0,
+        winnerPoints: contribution(wRef, opponentValue(m.loserId, true), true),
+        loserPoints: contribution(lRef, opponentValue(m.winnerId, false), false),
       }
     })
 
